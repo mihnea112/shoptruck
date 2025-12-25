@@ -1,3 +1,4 @@
+// src/app/api/auth/login/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import argon2 from "argon2";
@@ -14,28 +15,70 @@ type UserRow = {
 };
 
 function json(data: any, status = 200) {
-  return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
+  return NextResponse.json(data, {
+    status,
+    headers: { "cache-control": "no-store" },
+  });
 }
 
 function normalizeEmail(v: unknown) {
-  return String(v ?? "").trim().toLowerCase();
+  return String(v ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function sameOriginCheck(req: Request) {
+  if (process.env.NODE_ENV !== "production") return true;
+
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("host");
+  if (!origin || !host) return false;
+
+  try {
+    const o = new URL(origin);
+    return o.host === host;
+  } catch {
+    return false;
+  }
+}
+
+function isValidEmail(email: string) {
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export async function POST(req: Request) {
+  // Require JSON
+  const ct = req.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    return json(
+      { ok: false, error: "Content-Type invalid. Folosește application/json." },
+      415
+    );
+  }
+
   const body = await req.json().catch(() => null);
 
   const email = normalizeEmail(body?.email);
   const password = String(body?.password ?? "");
-  const mode = String(body?.mode ?? "cookie"); // "cookie" | "token" | "both"
+  const modeRaw = String(body?.mode ?? "cookie"); // cookie | token | both
+  const mode = modeRaw === "token" || modeRaw === "both" ? modeRaw : "cookie";
 
-  // mode behavior:
-  // - cookie: set httpOnly cookie (browser)
-  // - token: return token in JSON (mobile)
-  // - both: do both (useful for debugging)
-
-  if (!email || !password) {
-    return json({ ok: false, error: "Lipsesc credențialele." }, 400);
+  // IMPORTANT:
+  // - cookie/both must pass same-origin in production (avoid CSRF cookie-setting)
+  if ((mode === "cookie" || mode === "both") && !sameOriginCheck(req)) {
+    return json(
+      { ok: false, error: "Cerere respinsă (origine invalidă)." },
+      403
+    );
   }
+
+  if (!email || !password || !isValidEmail(email) || password.length > 500) {
+    // do not leak which field was wrong
+    return json({ ok: false, error: "Email sau parolă incorecte." }, 401);
+  }
+
+  // cleanup (cheap, keeps session table healthy)
+  await sql`DELETE FROM session WHERE expires_at < now()`;
 
   const rows = (await sql`
     SELECT
@@ -58,22 +101,27 @@ export async function POST(req: Request) {
     return json({ ok: false, error: "Email sau parolă incorecte." }, 401);
   }
 
+  // Verify password
   const okPw = await argon2.verify(user.password_hash, password);
   if (!okPw) {
     return json({ ok: false, error: "Email sau parolă incorecte." }, 401);
   }
 
-  // create session (single source of truth for web + mobile)
+  // Create session (single source of truth for web + mobile)
   const token = newSessionToken();
   const tokenHash = hashToken(token);
   const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14); // 14 days
+
+  // Optional: rotate sessions => keep 1 active session/user
+  // If you want that behavior, uncomment next line:
+  // await sql`DELETE FROM session WHERE user_id = ${user.id}`;
 
   await sql`
     INSERT INTO session (user_id, token_hash, expires_at)
     VALUES (${user.id}, ${tokenHash}, ${expires.toISOString()})
   `;
 
-  // cookie for web
+  // Cookie for web
   if (mode === "cookie" || mode === "both") {
     const c = await cookies();
     c.set("session", token, {
@@ -85,27 +133,35 @@ export async function POST(req: Request) {
     });
   }
 
-  // role-based redirect (kept)
+  // Role-based redirect
   const roles = user.roles ?? [];
   let redirectTo = "/";
 
   if (user.kind === "staff") {
-    redirectTo = roles.includes("ADMIN") || roles.includes("SALES_REP") ? "/admin" : "/";
+    redirectTo =
+      roles.includes("ADMIN") || roles.includes("SALES_REP") ? "/admin" : "/";
   } else {
     redirectTo = "/account";
   }
 
-  // response for mobile
+  const userSafe = { id: user.id, email: user.email, kind: user.kind, roles };
+
+  // Mobile mode returns token
   if (mode === "token") {
     return json({
       ok: true,
-      token, // mobile stores and sends: Authorization: Bearer <token>
+      token,
       expiresAt: expires.toISOString(),
-      user: { id: user.id, email: user.email, kind: user.kind, roles },
-      redirectTo, // optional, but useful
+      user: userSafe,
+      redirectTo,
     });
   }
 
-  // default web response (unchanged)
-  return json({ ok: true, redirectTo, user: { id: user.id, email: user.email, kind: user.kind, roles } });
+  // Web (or both)
+  return json({
+    ok: true,
+    redirectTo,
+    user: userSafe,
+    ...(mode === "both" ? { token, expiresAt: expires.toISOString() } : {}),
+  });
 }

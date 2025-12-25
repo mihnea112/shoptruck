@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 
-export default function LoginPage() {
+export default function LoginClient({ initialNext }: { initialNext: string | null }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,15 +29,13 @@ export default function LoginPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data?.ok) {
-        setError(
-          data?.error ?? "Autentificare eșuată. Verifică datele și încearcă din nou."
-        );
+        setError(data?.error ?? "Autentificare eșuată. Verifică datele și încearcă din nou.");
         return;
       }
 
-      const redirectTo =
-        next && next.startsWith("/") ? next : data.redirectTo ?? "/";
+      const redirectTo = initialNext ?? data.redirectTo ?? "/";
       router.push(redirectTo);
+      router.refresh();
     } catch {
       setError("A apărut o eroare la conectare. Încearcă din nou.");
     } finally {
@@ -61,8 +57,7 @@ export default function LoginPage() {
               Autentificare
             </h1>
             <p className="mt-2 text-sm text-slate-200">
-              Adminii și agenții intră în portalul de administrare. Clienții își
-              gestionează comenzile.
+              Adminii și agenții intră în portalul de administrare. Clienții își gestionează comenzile.
             </p>
           </div>
 
@@ -124,8 +119,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 text-center text-xs text-slate-400">
-            Prin autentificare accepți politica de confidențialitate și termenii
-            de utilizare.
+            Prin autentificare accepți politica de confidențialitate și termenii de utilizare.
           </div>
         </div>
       </main>
