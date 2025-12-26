@@ -1,190 +1,193 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth/api";
+import { getSessionUser } from "@/lib/auth/server";
 
-function json(data: any, status = 200) {
-  return NextResponse.json(data, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
-
-type Ctx = { params: { id: string } | Promise<{ id: string }> };
-async function getId(ctx: Ctx) {
-  const p = await Promise.resolve(ctx.params);
-  return String((p as any).id);
-}
-
-export async function GET(req: Request, ctx: Ctx) {
-  await requireAdmin(req);
-  const id = await getId(ctx);
-
-  const rows = await sql`
-    SELECT
-      id, sku, slug, name, description,
-      brand_id, tax_rate_id,
-      code, code_normalized, external_code,
-      price_gross, uom,
-      weight_kg, length_mm, width_mm, height_mm,
-      is_active, created_at, updated_at
-    FROM product
-    WHERE id = ${id}::uuid
-    LIMIT 1
-  `;
-  const p = (rows as any[])?.[0];
-  if (!p) return json({ ok: false, error: "Produs inexistent." }, 404);
-
-  const cats = await sql`
-    SELECT category_id
-    FROM product_category
-    WHERE product_id = ${id}::uuid
-  `;
-
-  return json({
-    ok: true,
-    item: p,
-    category_ids: (cats as any[]).map((r) => r.category_id),
-  });
-}
-
-export async function PATCH(req: Request, ctx: Ctx) {
-  await requireAdmin(req);
-  const id = await getId(ctx);
-
-  const ct = req.headers.get("content-type") || "";
-  if (!ct.includes("application/json")) {
-    return json(
-      { ok: false, error: "Content-Type invalid. Folosește application/json." },
-      415
-    );
+// Helper auth
+async function checkAuth(req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
+  if (user.kind !== "staff") {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
 
-  const body = await req.json().catch(() => null);
+function slugify(input: string) {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[ăâ]/g, "a")
+    .replace(/î/g, "i")
+    .replace(/ș/g, "s")
+    .replace(/ț/g, "t")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
-  const sku = String(body?.sku ?? "").trim();
-  const name = String(body?.name ?? "").trim();
-  const slug = String(body?.slug ?? "").trim();
-  const description = body?.description == null ? null : String(body.description);
+// --- GET: Detalii produs ---
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authRes = await checkAuth(req);
+  if (authRes) return authRes;
 
-  const priceGross = Number(String(body?.price_gross ?? "0").replace(",", "."));
-  const isActive = body?.is_active !== false;
+  const { id } = await params;
 
-  const brandId = body?.brand_id ? String(body.brand_id) : null;
-  const taxRateId = body?.tax_rate_id ? String(body.tax_rate_id) : null;
+  try {
+    // UPDATED: Table names singular (product, brand, product_code)
+    const productRows = await sql`
+      SELECT 
+        p.*,
+        b.name as brand_name,
+        json_agg(
+            json_build_object(
+                'id', pc.id,
+                'code', pc.code,
+                'code_type', pc.code_type,
+                'is_primary', pc.is_primary
+            )
+        ) FILTER (WHERE pc.id IS NOT NULL) as codes
+      FROM product p
+      LEFT JOIN brand b ON p.brand_id = b.id
+      LEFT JOIN product_code pc ON p.id = pc.product_id
+      WHERE p.id = ${id}
+      GROUP BY p.id, b.name
+    `;
 
-  const code = body?.code ? String(body.code).trim() : null;
-  const codeNorm = body?.code_normalized ? String(body.code_normalized).trim() : null;
-  const externalCode = body?.external_code ? String(body.external_code).trim() : null;
-
-  const uom = body?.uom ? String(body.uom).trim() : "buc";
-
-  const weightKg =
-    body?.weight_kg == null || body.weight_kg === ""
-      ? null
-      : Number(String(body.weight_kg).replace(",", "."));
-
-  const lengthMm = body?.length_mm == null || body.length_mm === "" ? null : Number(body.length_mm);
-  const widthMm = body?.width_mm == null || body.width_mm === "" ? null : Number(body.width_mm);
-  const heightMm = body?.height_mm == null || body.height_mm === "" ? null : Number(body.height_mm);
-
-  const categoryIds: string[] = Array.isArray(body?.category_ids)
-    ? body.category_ids.map((x: any) => String(x)).filter(Boolean)
-    : [];
-
-  if (!sku || sku.length < 2) return json({ ok: false, error: "SKU invalid." }, 400);
-  if (!name || name.length < 2) return json({ ok: false, error: "Numele este obligatoriu." }, 400);
-  if (!slug) return json({ ok: false, error: "Slug invalid." }, 400);
-  if (!taxRateId) return json({ ok: false, error: "Selectează TVA." }, 400);
-  if (!Number.isFinite(priceGross) || priceGross < 0) return json({ ok: false, error: "Preț invalid." }, 400);
-
-  if (weightKg != null && (!Number.isFinite(weightKg) || weightKg < 0))
-    return json({ ok: false, error: "Greutate invalidă." }, 400);
-
-  for (const [label, v] of [
-    ["Lungime", lengthMm],
-    ["Lățime", widthMm],
-    ["Înălțime", heightMm],
-  ] as const) {
-    if (v != null && (!Number.isFinite(v) || v < 0)) {
-      return json({ ok: false, error: `${label} invalidă.` }, 400);
+    if (productRows.length === 0) {
+      return NextResponse.json({ ok: false, error: "Produsul nu există." }, { status: 404 });
     }
-  }
 
-  try {
-    const rows = await sql`
-      WITH upd AS (
-        UPDATE product
-        SET
-          sku = ${sku},
-          slug = ${slug},
-          name = ${name},
-          description = ${description},
-          brand_id = ${brandId},
-          tax_rate_id = ${taxRateId},
-          code = ${code},
-          code_normalized = ${codeNorm},
-          external_code = ${externalCode},
-          price_gross = ${priceGross},
-          uom = ${uom},
-          weight_kg = ${weightKg},
-          length_mm = ${lengthMm},
-          width_mm = ${widthMm},
-          height_mm = ${heightMm},
-          is_active = ${isActive},
-          updated_at = now()
-        WHERE id = ${id}::uuid
-        RETURNING id
-      ),
-      del AS (
-        DELETE FROM product_category
-        WHERE product_id = (SELECT id FROM upd)
-        RETURNING 1
-      ),
-      cats AS (
-        SELECT unnest(${categoryIds}::uuid[]) AS category_id
-      ),
-      ins AS (
-        INSERT INTO product_category (product_id, category_id)
-        SELECT (SELECT id FROM upd), cats.category_id
-        FROM cats
-        ON CONFLICT DO NOTHING
-        RETURNING 1
-      )
-      SELECT (SELECT id FROM upd) AS id
+    const product = productRows[0];
+
+    // UPDATED: product_category (singular assumed)
+    // Daca tabelul de legatura are alt nume (ex: products_categories), trebuie ajustat aici
+    const catRows = await sql`
+      SELECT category_id FROM product_category WHERE product_id = ${id}
     `;
+    const category_ids = catRows.map((r: any) => r.category_id);
 
-    const okId = (rows as any[])?.[0]?.id as string | undefined;
-    if (!okId) return json({ ok: false, error: "Produs inexistent." }, 404);
-
-    return json({ ok: true, id: okId });
-  } catch (e: any) {
-    const msg = e?.code === "23505" ? "SKU sau slug deja există." : "Eroare internă.";
-    return json({ ok: false, error: msg }, 500);
+    return NextResponse.json({
+      ok: true,
+      item: product,
+      category_ids,
+    });
+  } catch (err: any) {
+    console.error("GET product error:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
 
-export async function DELETE(req: Request, ctx: Ctx) {
-  await requireAdmin(req);
-  const id = await getId(ctx);
+// --- PATCH: Actualizare produs ---
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authRes = await checkAuth(req);
+  if (authRes) return authRes;
+
+  const { id } = await params;
 
   try {
-    // explicit cleanup (works even if you don't have ON DELETE CASCADE)
-    const rows = await sql`
-      WITH del_cat AS (
-        DELETE FROM product_category WHERE product_id = ${id}::uuid
-        RETURNING 1
-      ),
-      del_prod AS (
-        DELETE FROM product WHERE id = ${id}::uuid
-        RETURNING id
-      )
-      SELECT (SELECT id FROM del_prod) AS id
+    const body = await req.json();
+    
+    if (!body.sku || !body.name) {
+      return NextResponse.json({ ok: false, error: "SKU și Nume sunt obligatorii." }, { status: 400 });
+    }
+
+    const newSlug = body.slug ? body.slug : slugify(body.name);
+
+    // UPDATED: Table 'product'
+    await sql`
+      UPDATE product
+      SET
+        sku = ${body.sku},
+        name = ${body.name},
+        slug = ${newSlug},
+        description = ${body.description || null},
+        price_gross = ${body.price_gross || 0},
+        tax_rate_id = ${body.tax_rate_id},
+        is_active = ${body.is_active ?? true},
+        external_code = ${body.external_code || null},
+        brand_id = ${body.brand_id || null},
+        uom = ${body.uom || 'buc'},
+        weight_kg = ${body.weight_kg || null},
+        length_mm = ${body.length_mm || null},
+        width_mm = ${body.width_mm || null},
+        height_mm = ${body.height_mm || null},
+        updated_at = NOW()
+      WHERE id = ${id}
     `;
 
-    const deleted = (rows as any[])?.[0]?.id as string | undefined;
-    if (!deleted) return json({ ok: false, error: "Produs inexistent." }, 404);
-    return json({ ok: true, id: deleted });
-  } catch {
-    return json({ ok: false, error: "Eroare la ștergere." }, 500);
+    // UPDATED: Table 'product_category'
+    if (Array.isArray(body.category_ids)) {
+      await sql`DELETE FROM product_category WHERE product_id = ${id}`;
+      for (const catId of body.category_ids) {
+        await sql`
+          INSERT INTO product_category (product_id, category_id)
+          VALUES (${id}, ${catId})
+          ON CONFLICT DO NOTHING
+        `;
+      }
+    }
+
+    // UPDATED: Table 'product' (code fields)
+    if (body.code) {
+       await sql`
+         UPDATE product 
+         SET code = ${body.code}, 
+             code_normalized = ${body.code_normalized || body.code}
+         WHERE id = ${id}
+       `;
+    }
+
+    // UPDATED: Table 'product_code'
+    if (Array.isArray(body.equivalent_codes)) {
+      await sql`
+        DELETE FROM product_code 
+        WHERE product_id = ${id} AND is_primary = false
+      `;
+
+      for (const c of body.equivalent_codes) {
+        if (c && typeof c === 'string') {
+           const cNorm = c.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+           await sql`
+             INSERT INTO product_code (product_id, code, code_normalized, code_type, is_primary)
+             VALUES (${id}, ${c}, ${cNorm}, 'other', false)
+           `;
+        }
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    console.error("PATCH product error:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+  }
+}
+
+// --- DELETE: Ștergere produs ---
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authRes = await checkAuth(req);
+  if (authRes) return authRes;
+
+  const { id } = await params;
+
+  try {
+    // UPDATED: Singular tables
+    await sql`DELETE FROM product_category WHERE product_id = ${id}`;
+    await sql`DELETE FROM product_code WHERE product_id = ${id}`;
+    await sql`DELETE FROM product WHERE id = ${id}`;
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    console.error("DELETE product error:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }

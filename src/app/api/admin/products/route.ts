@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/api";
+import { normalizeCode } from "@/lib/utils";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
 
+  // --- 1. Extragere si Validare Date ---
   const sku = String(body?.sku ?? "").trim();
   const name = String(body?.name ?? "").trim();
   const slug = String(body?.slug ?? "").trim();
@@ -78,6 +80,18 @@ export async function POST(req: Request) {
 
   const brandId = body?.brand_id ? String(body.brand_id).trim() : "";
   const taxRateId = body?.tax_rate_id ? String(body.tax_rate_id).trim() : "";
+  
+  const description = body?.description ? String(body.description).trim() : null;
+  const code = body?.code ? String(body.code).trim() : null;
+  const codeNorm = body?.code_normalized ? String(body.code_normalized).trim() : null;
+  const externalCode = body?.external_code ? String(body.external_code).trim() : null;
+  
+  const uom = body?.uom ? String(body.uom).trim() : "buc";
+  
+  const weightKg = body?.weight_kg ? Number(String(body.weight_kg).replace(",", ".")) : null;
+  const lengthMm = body?.length_mm ? Number(body.length_mm) : null;
+  const widthMm = body?.width_mm ? Number(body.width_mm) : null;
+  const heightMm = body?.height_mm ? Number(body.height_mm) : null;
 
   const categoryIds: string[] = Array.isArray(body?.category_ids)
     ? body.category_ids.map((x: any) => String(x).trim()).filter(Boolean)
@@ -89,37 +103,60 @@ export async function POST(req: Request) {
   if (!taxRateId) return json({ ok: false, error: "Selectează TVA." }, 400);
   if (!Number.isFinite(priceGross) || priceGross < 0) return json({ ok: false, error: "Preț invalid." }, 400);
 
+  const skuNormalized = normalizeCode(sku);
+
   try {
-    // 1) create product
-    const created = await sql`
-      INSERT INTO product (sku, slug, name, brand_id, tax_rate_id, price_gross, is_active)
-      VALUES (
-        ${sku},
-        ${slug},
-        ${name},
-        NULLIF(${brandId}, '')::uuid,
-        ${taxRateId}::uuid,
-        ${priceGross},
-        ${isActive}
+    // --- 2. Executie SQL (Tranzactie CTE) ---
+    // AM INLOCUIT ON CONFLICT CU O VERIFICARE "WHERE NOT EXISTS" PENTRU A EVITA EROAREA
+    
+    const result = await sql`
+      WITH new_prod AS (
+        INSERT INTO product (
+          sku, slug, name, description,
+          brand_id, tax_rate_id, 
+          code, code_normalized, external_code,
+          price_gross, uom, 
+          weight_kg, length_mm, width_mm, height_mm,
+          is_active
+        )
+        VALUES (
+          ${sku},
+          ${slug},
+          ${name},
+          ${description},
+          NULLIF(${brandId}, '')::uuid,
+          ${taxRateId}::uuid,
+          ${code}, ${codeNorm}, ${externalCode},
+          ${priceGross}, ${uom},
+          ${weightKg}, ${lengthMm}, ${widthMm}, ${heightMm},
+          ${isActive}
+        )
+        RETURNING id, sku
+      ),
+      ins_cats AS (
+        INSERT INTO product_category (product_id, category_id)
+        SELECT (SELECT id FROM new_prod), unnest(${categoryIds}::uuid[])
+        ON CONFLICT DO NOTHING
+      ),
+      ins_sku_code AS (
+        INSERT INTO product_code (product_id, code, code_normalized, code_type, is_primary)
+        SELECT id, sku, ${skuNormalized}, 'SKU', true
+        FROM new_prod
+        WHERE NOT EXISTS (
+            SELECT 1 FROM product_code WHERE code_normalized = ${skuNormalized}
+        )
       )
-      RETURNING id
+      SELECT id FROM new_prod
     `;
 
-    const id = (created as any[])?.[0]?.id as string | undefined;
+    const id = (result as any[])?.[0]?.id as string | undefined;
+
     if (!id) return json({ ok: false, error: "Eroare la creare produs." }, 500);
 
-    // 2) link categories (only if provided)
-    if (categoryIds.length > 0) {
-      await sql`
-        INSERT INTO product_category (product_id, category_id)
-        SELECT ${id}::uuid, x::uuid
-        FROM unnest(${categoryIds}::text[]) AS x
-        ON CONFLICT DO NOTHING
-      `;
-    }
-
     return json({ ok: true, id });
+
   } catch (e: any) {
+    console.error("Create Product Error:", e);
     const msg = e?.code === "23505" ? "SKU sau slug deja există." : "Eroare internă.";
     return json({ ok: false, error: msg }, 500);
   }

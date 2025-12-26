@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+// --- TYPES ---
+
 type Category = {
   id: string;
   name: string;
@@ -21,6 +23,15 @@ type TaxRate = {
   rate: string | number;
 };
 
+// Tip pentru ce vine din Backend (poate fi obiect complet)
+type BackendProductCode = {
+  id?: string;
+  code: string;
+  code_normalized?: string;
+  code_type?: string;
+  is_primary?: boolean;
+};
+
 type Product = {
   id: string;
   sku: string;
@@ -38,7 +49,6 @@ type Product = {
   length_mm: number | null;
   width_mm: number | null;
   height_mm: number | null;
-  // optional if your list API returns it
   brand_name?: string | null;
   categories?: string | null;
 };
@@ -46,10 +56,13 @@ type Product = {
 type ProductDetails = Product & {
   description: string | null;
   category_ids: string[];
+  codes?: BackendProductCode[]; // Backend-ul trimite obiecte
 };
 
 type ApiList<T> = { ok: true; items: T[]; limit?: number; offset?: number };
 type ApiOne<T> = { ok: true; item: T; category_ids?: string[] };
+
+// --- HELPERS ---
 
 function slugify(input: string) {
   return input
@@ -79,10 +92,13 @@ function safeNum(v: any) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Stiluri
 const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#feab1f]";
 const selectBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[#feab1f]";
+
+// --- COMPONENT ---
 
 export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [cats, setCats] = useState<Category[]>([]);
@@ -102,19 +118,19 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
 
-  // form state
+  // Form State
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [priceGross, setPriceGross] = useState("0");
-  const [taxRateId, setTaxRateId] = useState(""); // now a picker
+  const [taxRateId, setTaxRateId] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [code, setCode] = useState("");
   const [codeNorm, setCodeNorm] = useState("");
   const [externalCode, setExternalCode] = useState("");
-  const [brandId, setBrandId] = useState(""); // now a picker
+  const [brandId, setBrandId] = useState("");
 
   const [uom, setUom] = useState("buc");
   const [weightKg, setWeightKg] = useState("");
@@ -122,6 +138,11 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [widthMm, setWidthMm] = useState("");
   const [heightMm, setHeightMm] = useState("");
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
+
+  // State CODURI ECHIVALENTE (Lista de STRING-URI simple)
+  // Aceasta este cheia pentru a evita eroarea "Objects not valid as child"
+  const [equivCodes, setEquivCodes] = useState<string[]>([]);
+  const [newEquivCode, setNewEquivCode] = useState("");
 
   const categoryOptions = useMemo(
     () => cats.slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -179,7 +200,6 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
         setError(e?.message || "Eroare la inițializare.");
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function resetForm() {
@@ -188,13 +208,13 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     setSlug("");
     setDescription("");
     setPriceGross("0");
-    setTaxRateId(taxOptions[0]?.id || ""); // default TVA
+    setTaxRateId(taxOptions[0]?.id || "");
     setIsActive(true);
 
     setCode("");
     setCodeNorm("");
     setExternalCode("");
-    setBrandId(""); // optional
+    setBrandId("");
 
     setUom("buc");
     setWeightKg("");
@@ -202,6 +222,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     setWidthMm("");
     setHeightMm("");
     setCategoryIds([]);
+    
+    setEquivCodes([]);
+    setNewEquivCode("");
   }
 
   function openCreate() {
@@ -240,11 +263,42 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       setHeightMm(p.height_mm == null ? "" : String(p.height_mm));
 
       setCategoryIds((data.category_ids || []) as string[]);
+      
+      // --- CHEIA FIXULUI ---
+      // Extragem DOAR string-ul 'code' din obiectele venite din DB.
+      // Astfel, 'equivCodes' va fi mereu string[].
+      const codesList = (p.codes || [])
+        .filter(c => !c.is_primary)
+        .map(c => c.code); // <--- Aici transformam obiectul in string
+      
+      setEquivCodes(codesList);
+
       setModalOpen(true);
     } catch (e: any) {
       setError(e?.message || "Eroare la deschidere produs.");
     }
   }
+
+  // --- LOGICA LOCALA ECHIVALENTE ---
+
+  function handleAddCodeLocal() {
+    const val = newEquivCode.trim();
+    if (!val) return;
+
+    if (equivCodes.some(c => c.toLowerCase() === val.toLowerCase())) {
+        alert("Acest cod este deja în listă.");
+        return;
+    }
+
+    setEquivCodes([...equivCodes, val]);
+    setNewEquivCode("");
+  }
+
+  function handleRemoveCodeLocal(codeToRemove: string) {
+    setEquivCodes(prev => prev.filter(c => c !== codeToRemove));
+  }
+
+  // --- SALVARE ---
 
   async function save() {
     setError(null);
@@ -271,6 +325,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       height_mm: safeNum(heightMm),
 
       category_ids: categoryIds,
+
+      // Trimitem lista de coduri (string-uri) pentru bulk update
+      equivalent_codes: equivCodes
     };
 
     if (!payload.sku || payload.sku.length < 2) return setError("SKU invalid.");
@@ -304,11 +361,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   }
 
   async function remove(id: string) {
-    setError(null);
-    setNotice(null);
-
     if (!confirm("Sigur vrei să ștergi produsul?")) return;
-
     try {
       await apiJson(`/api/admin/products/${id}`, { method: "DELETE" });
       setNotice("Produs șters.");
@@ -448,16 +501,13 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                         >
                           Deschide
                         </button>
-
-                        {isAdmin ? (
+                        {isAdmin && (
                           <button
                             onClick={() => remove(p.id)}
                             className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition"
                           >
                             Șterge
                           </button>
-                        ) : (
-                          <span className="text-xs text-slate-400">Doar vizualizare</span>
                         )}
                       </div>
                     </td>
@@ -471,15 +521,15 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Modal */}
       {modalOpen ? (
-        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <div className="text-sm font-semibold text-slate-900">
                   {editId ? "Editează produs" : "Adaugă produs"}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  Completează câmpurile esențiale (SKU, nume, slug, TVA, preț). Restul sunt opționale.
+                  Completează câmpurile esențiale.
                 </div>
               </div>
               <button
@@ -492,6 +542,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
             <div className="grid gap-5 px-5 py-5 md:grid-cols-2">
               <div className="space-y-4">
+                {/* Partea STANGA - Generale */}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Nume</label>
                   <input
@@ -549,66 +600,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
                   Produs activ
                 </label>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Cod</label>
-                    <input value={code} onChange={(e) => setCode(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Cod normalizat</label>
-                    <input value={codeNorm} onChange={(e) => setCodeNorm(e.target.value)} className={inputBase} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Cod extern</label>
-                    <input value={externalCode} onChange={(e) => setExternalCode(e.target.value)} className={inputBase} />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Brand</label>
-                    <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className={selectBase}>
-                      <option value="">— Fără brand —</option>
-                      {brandOptions.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">UM (uom)</label>
-                    <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Greutate (kg)</label>
-                    <input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="ex: 1.25" className={inputBase} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Lungime (mm)</label>
-                    <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Lățime (mm)</label>
-                    <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Înălțime (mm)</label>
-                    <input value={heightMm} onChange={(e) => setHeightMm(e.target.value)} className={inputBase} />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
+                
+                {/* Sectiune categorii */}
+                 <div className="space-y-2 pt-2">
                   <div className="text-xs font-semibold text-slate-600">Categorii</div>
                   <div className="max-h-48 overflow-auto rounded-xl border border-slate-200 p-3">
                     {categoryOptions.length === 0 ? (
@@ -625,10 +619,101 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     )}
                   </div>
                 </div>
+              </div>
 
-                {error ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-                ) : null}
+              <div className="space-y-4">
+                {/* Partea DREAPTA - Coduri si Specificatii */}
+                
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-slate-600">Coduri Echivalente (OE / Cross)</div>
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    
+                    {/* Lista Coduri Existente (Randează doar string-uri) */}
+                    <div className="max-h-40 overflow-y-auto space-y-2 mb-3">
+                      {equivCodes.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic">Niciun cod echivalent.</p>
+                      ) : (
+                        equivCodes.map((c, idx) => (
+                           <div key={idx} className="flex items-center justify-between border-b border-slate-100 pb-1 last:border-0 last:pb-0">
+                              <span className="text-xs font-medium text-slate-900">{c}</span>
+                              {isAdmin && (
+                                <button 
+                                  onClick={() => handleRemoveCodeLocal(c)}
+                                  className="text-slate-400 hover:text-red-600 text-xs px-2 font-bold"
+                                  type="button"
+                                >
+                                  &times;
+                                </button>
+                              )}
+                           </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Adaugare Cod Rapid */}
+                    {isAdmin && (
+                      <div className="flex gap-2 border-t border-slate-100 pt-3">
+                        <input 
+                          value={newEquivCode}
+                          onChange={(e) => setNewEquivCode(e.target.value)}
+                          placeholder="Adaugă cod (ex: A001..)"
+                          className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-[#feab1f]"
+                        />
+                        <button 
+                          onClick={handleAddCodeLocal}
+                          type="button"
+                          className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-800"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">Cod Intern</label>
+                    <input value={code} onChange={(e) => setCode(e.target.value)} className={inputBase} />
+                  </div>
+                   <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">Cod Extern</label>
+                    <input value={externalCode} onChange={(e) => setExternalCode(e.target.value)} className={inputBase} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">Brand</label>
+                    <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className={selectBase}>
+                      <option value="">— Fără brand —</option>
+                      {brandOptions.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                   <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">UM (uom)</label>
+                    <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">Gr. (kg)</label>
+                    <input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="0.00" className={inputBase} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">L (mm)</label>
+                    <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} className={inputBase} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">l (mm)</label>
+                    <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} className={inputBase} />
+                  </div>
+                </div>
               </div>
             </div>
 
