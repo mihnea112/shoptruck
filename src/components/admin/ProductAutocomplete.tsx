@@ -1,104 +1,197 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type ProductDTO = {
   id: string;
   name: string;
-  sku?: string;
+  sku?: string | null;
+  slug?: string | null;
+  brand_name?: string | null;
+
+  // IMPORTANT: this is NET (no VAT) – used by offers math
   price: number;
+
+  // Optional (for display)
+  price_gross?: number | null;
+
+  // 19 / 9 / 0
   vat_percent: number;
 };
 
-interface Props {
+type Props = {
   onSelect: (p: ProductDTO) => void;
   placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+};
+
+function formatMoney(n: number) {
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(2);
 }
 
-export default function ProductAutocomplete({ onSelect, placeholder }: Props) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ProductDTO[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
+export default function ProductAutocomplete({
+  onSelect,
+  placeholder = "Caută după cod / echivalență / nume / SKU…",
+  disabled,
+  className,
+}: Props) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [items, setItems] = useState<ProductDTO[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceRef = useRef<number | null>(null);
+
+  const canSearch = useMemo(() => q.trim().length >= 2, [q]);
 
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (query.length < 2) {
-        setResults([]);
-        return;
-      }
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => {
+    setError(null);
+
+    if (!canSearch) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(async () => {
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       setLoading(true);
       try {
-        const res = await fetch(`/api/admin/products/search?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        if (data.ok) {
-          setResults(data.items);
-          setIsOpen(true);
-        }
-      } catch (e) {
-        console.error(e);
+        const res = await fetch(
+          `/api/admin/products/search?q=${encodeURIComponent(q.trim())}&limit=20`,
+          { headers: { accept: "application/json" }, signal: ac.signal }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) throw new Error(data?.error || "Eroare la căutare.");
+
+        const list = (data.items || []) as any[];
+        const mapped: ProductDTO[] = list.map((x) => ({
+          id: String(x.id),
+          name: String(x.name),
+          sku: x.sku ?? null,
+          slug: x.slug ?? null,
+          brand_name: x.brand_name ?? null,
+          price: Number(x.price ?? 0),
+          price_gross: x.price_gross == null ? null : Number(x.price_gross),
+          vat_percent: Number(x.vat_percent ?? 0),
+        }));
+
+        setItems(mapped);
+        setOpen(true);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setError(e?.message || "Eroare la căutare.");
+        setItems([]);
+        setOpen(true);
       } finally {
         setLoading(false);
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
+    }, 250);
 
-  const handleSelect = (p: ProductDTO) => {
-    setQuery(p.name); // Afișăm numele selectat
-    setIsOpen(false);
-    onSelect(p); // Trimitem obiectul întreg părintelui
-  };
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [q, canSearch]);
 
-  // Închide dropdown la click în afară
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  function pick(p: ProductDTO) {
+    onSelect(p);
+    // Set input to selected product name (optional)
+    setQ(p.name);
+    setOpen(false);
+  }
 
   return (
-    <div className="relative w-full" ref={wrapperRef}>
-      <input
-        className="w-full bg-transparent px-2 py-1.5 text-slate-900 placeholder:text-slate-400 outline-none focus:placeholder-slate-300"
-        placeholder={placeholder || "Caută produs..."}
-        value={query}
-        onChange={(e) => {
-           setQuery(e.target.value);
-           if (!isOpen && e.target.value.length > 1) setIsOpen(true);
-        }}
-        onFocus={() => { if (results.length > 0) setIsOpen(true); }}
-      />
-      
-      {/* Loading Indicator mic in dreapta */}
-      {loading && (
-        <div className="absolute right-2 top-2">
-           <svg className="w-4 h-4 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-        </div>
-      )}
+    <div ref={rootRef} className={`relative ${className || ""}`}>
+      <div className="relative">
+        <input
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={
+            "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 " +
+            "placeholder:text-slate-500 outline-none focus:border-[#feab1f] transition-colors"
+          }
+        />
 
-      {isOpen && results.length > 0 && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-75 rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-auto">
-          {results.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => handleSelect(p)}
-              className="cursor-pointer border-b border-slate-50 px-4 py-2 hover:bg-slate-50 last:border-0"
-            >
-              <div className="text-sm font-semibold text-slate-800">{p.name}</div>
-              <div className="flex justify-between text-xs text-slate-500 mt-0.5">
-                <span>SKU: {p.sku || "-"}</span>
-                <span>{Number(p.price).toFixed(2)} RON</span>
-              </div>
-            </div>
-          ))}
+        <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+          {loading ? (
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+          ) : null}
         </div>
-      )}
+      </div>
+
+      {open ? (
+        <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          {!canSearch ? (
+            <div className="px-3 py-2 text-xs text-slate-500">Tastează minim 2 caractere.</div>
+          ) : error ? (
+            <div className="px-3 py-2 text-xs text-red-700 bg-red-50 border-t border-red-100">{error}</div>
+          ) : items.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-slate-500">Nu am găsit produse.</div>
+          ) : (
+            <ul className="max-h-72 overflow-auto">
+              {items.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => pick(p)}
+                    className="w-full px-3 py-2 text-left hover:bg-slate-50 transition"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
+                        <div className="mt-0.5 truncate text-xs text-slate-500">
+                          {p.brand_name ? `${p.brand_name} · ` : ""}
+                          {p.sku ? `SKU: ${p.sku}` : p.slug ? p.slug : ""}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {formatMoney(p.price)} lei
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          TVA {Math.round(Number(p.vat_percent) || 0)}%
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
