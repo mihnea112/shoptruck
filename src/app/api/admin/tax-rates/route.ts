@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { ApiError, requireAdmin } from "@/lib/auth/api";
+import { ApiError, requireAdmin, requireStaff } from "@/lib/auth/api";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -11,7 +11,7 @@ function json(data: any, status = 200) {
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
     const rows =
       await sql`SELECT id, name, rate FROM tax_rate ORDER BY rate DESC, name`;
     return json({ ok: true, items: rows });

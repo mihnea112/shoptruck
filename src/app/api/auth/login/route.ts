@@ -11,7 +11,8 @@ type UserRow = {
   password_hash: string;
   kind: "staff" | "customer";
   is_active: boolean;
-  roles: string[] | null;
+  account_id: string | null;
+  roles: string[]; // aggregated from role.key
 };
 
 function json(data: any, status = 200) {
@@ -22,28 +23,42 @@ function json(data: any, status = 200) {
 }
 
 function normalizeEmail(v: unknown) {
-  return String(v ?? "")
-    .trim()
-    .toLowerCase();
-}
-
-function sameOriginCheck(req: Request) {
-  if (process.env.NODE_ENV !== "production") return true;
-
-  const origin = req.headers.get("origin");
-  const host = req.headers.get("host");
-  if (!origin || !host) return false;
-
-  try {
-    const o = new URL(origin);
-    return o.host === host;
-  } catch {
-    return false;
-  }
+  return String(v ?? "").trim().toLowerCase();
 }
 
 function isValidEmail(email: string) {
   return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function normalizeMode(v: unknown): "cookie" | "token" | "both" {
+  const m = String(v ?? "cookie").toLowerCase();
+  if (m === "token" || m === "both") return m;
+  return "cookie";
+}
+
+/**
+ * CSRF hardening for cookie-setting requests.
+ * - In production, require same-origin for mode cookie/both.
+ * - Use Origin when available; fall back to Referer.
+ */
+function sameOriginCheck(req: Request) {
+  if (process.env.NODE_ENV !== "production") return true;
+
+  const host = req.headers.get("host");
+  if (!host) return false;
+
+  const origin = req.headers.get("origin");
+  const referer = req.headers.get("referer");
+
+  const candidate = origin || referer;
+  if (!candidate) return false;
+
+  try {
+    const u = new URL(candidate);
+    return u.host === host;
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: Request) {
@@ -60,24 +75,19 @@ export async function POST(req: Request) {
 
   const email = normalizeEmail(body?.email);
   const password = String(body?.password ?? "");
-  const modeRaw = String(body?.mode ?? "cookie"); // cookie | token | both
-  const mode = modeRaw === "token" || modeRaw === "both" ? modeRaw : "cookie";
+  const mode = normalizeMode(body?.mode);
 
-  // IMPORTANT:
-  // - cookie/both must pass same-origin in production (avoid CSRF cookie-setting)
+  // Cookie-setting requests must be same-origin (production)
   if ((mode === "cookie" || mode === "both") && !sameOriginCheck(req)) {
-    return json(
-      { ok: false, error: "Cerere respinsă (origine invalidă)." },
-      403
-    );
+    return json({ ok: false, error: "Cerere respinsă (origine invalidă)." }, 403);
   }
 
+  // Don’t leak details
   if (!email || !password || !isValidEmail(email) || password.length > 500) {
-    // do not leak which field was wrong
     return json({ ok: false, error: "Email sau parolă incorecte." }, 401);
   }
 
-  // cleanup (cheap, keeps session table healthy)
+  // Cleanup expired sessions
   await sql`DELETE FROM session WHERE expires_at < now()`;
 
   const rows = (await sql`
@@ -87,6 +97,7 @@ export async function POST(req: Request) {
       u.password_hash,
       u.kind,
       u.is_active,
+      u.account_id,
       COALESCE(array_agg(r.key) FILTER (WHERE r.key IS NOT NULL), '{}') AS roles
     FROM app_user u
     LEFT JOIN user_role ur ON ur.user_id = u.id
@@ -97,33 +108,32 @@ export async function POST(req: Request) {
   `) as UserRow[];
 
   const user = rows[0];
+
   if (!user || !user.is_active) {
     return json({ ok: false, error: "Email sau parolă incorecte." }, 401);
   }
 
-  // Verify password
   const okPw = await argon2.verify(user.password_hash, password);
   if (!okPw) {
     return json({ ok: false, error: "Email sau parolă incorecte." }, 401);
   }
 
-  // Create session (single source of truth for web + mobile)
+  // Create session
   const token = newSessionToken();
   const tokenHash = hashToken(token);
   const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14); // 14 days
 
-  // Optional: rotate sessions => keep 1 active session/user
-  // If you want that behavior, uncomment next line:
-  // await sql`DELETE FROM session WHERE user_id = ${user.id}`;
+  // Optional: keep only 1 active session/user
+  // await sql`DELETE FROM session WHERE user_id = ${user.id}::uuid`;
 
   await sql`
     INSERT INTO session (user_id, token_hash, expires_at)
-    VALUES (${user.id}, ${tokenHash}, ${expires.toISOString()})
+    VALUES (${user.id}::uuid, ${tokenHash}, ${expires.toISOString()})
   `;
 
-  // Cookie for web
+  // Set cookie for web
   if (mode === "cookie" || mode === "both") {
-    const c = await cookies();
+    const c = await cookies(); // IMPORTANT: no await
     c.set("session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -133,20 +143,27 @@ export async function POST(req: Request) {
     });
   }
 
-  // Role-based redirect
-  const roles = user.roles ?? [];
-  let redirectTo = "/";
+  const roles = Array.isArray(user.roles) ? user.roles : [];
 
+  // Redirect logic:
+  // - staff with ADMIN or SALES_REP => /admin
+  // - everyone else => /
+  let redirectTo = "/";
   if (user.kind === "staff") {
-    redirectTo =
-      roles.includes("ADMIN") || roles.includes("SALES_REP") ? "/admin" : "/";
+    redirectTo = roles.includes("ADMIN") || roles.includes("SALES_REP") ? "/admin" : "/";
   } else {
-    redirectTo = "/account";
+    redirectTo = "/";
   }
 
-  const userSafe = { id: user.id, email: user.email, kind: user.kind, roles };
+  const userSafe = {
+    id: user.id,
+    email: user.email,
+    kind: user.kind,
+    roles,
+    account_id: user.account_id,
+  };
 
-  // Mobile mode returns token
+  // Token-only for mobile
   if (mode === "token") {
     return json({
       ok: true,

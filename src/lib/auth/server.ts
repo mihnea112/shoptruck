@@ -35,7 +35,6 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     LEFT JOIN user_role ur ON ur.user_id = u.id
     LEFT JOIN role r ON r.id = ur.role_id
     WHERE s.token_hash = ${tokenHash}
-      AND s.revoked_at IS NULL
       AND s.expires_at > now()
       AND u.is_active = true
     GROUP BY u.id, u.email, u.kind

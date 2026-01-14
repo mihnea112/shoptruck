@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { ApiError, requireAdmin } from "@/lib/auth/api";
+import { ApiError, requireAdmin, requireStaff } from "@/lib/auth/api";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -11,7 +11,7 @@ function json(data: any, status = 200) {
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
         c.name,
         c.slug,
         c.parent_id,
-        (SELECT COUNT(*)::int FROM product_category pc WHERE pc.category_id = c.id) AS product_count
+        0::int AS product_count
       FROM category c
       WHERE
         (${q} = '' OR c.name ILIKE '%' || ${q} || '%' OR c.slug ILIKE '%' || ${q} || '%')
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
 
     const ct = req.headers.get("content-type") || "";
     if (!ct.includes("application/json")) {

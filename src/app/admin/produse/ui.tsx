@@ -23,50 +23,33 @@ type TaxRate = {
   rate: string | number; // can be 0.19 or 19
 };
 
-type BackendProductCode = {
-  id?: string;
-  code: string;
-  code_normalized?: string;
-  code_type?: string;
-  is_primary?: boolean;
-};
-
 type Product = {
   id: string;
   sku: string;
   slug: string;
   name: string;
 
-  // selling price (gross)
-  price_gross: number;
-
-  // NEW:
-  buy_price_net?: number | null;
-  margin_pct?: number | null;
+  buy_price_net: number;
+  profit_margin_pct: number;
 
   is_active: boolean;
-  code: string | null;
-  code_normalized: string | null;
-  external_code: string | null;
   brand_id: string | null;
+  category_id: string | null;
   tax_rate_id: string;
-  uom: string | null;
-  weight_kg: number | null;
-  length_mm: number | null;
-  width_mm: number | null;
-  height_mm: number | null;
+  uom: string;
+
   brand_name?: string | null;
-  categories?: string | null;
+  category_name?: string | null;
 };
 
 type ProductDetails = Product & {
   description: string | null;
-  category_ids: string[];
-  codes?: BackendProductCode[];
+  primary_code: string | null;
+  equivalent_codes: string[];
 };
 
 type ApiList<T> = { ok: true; items: T[]; limit?: number; offset?: number };
-type ApiOne<T> = { ok: true; item: T; category_ids?: string[] };
+type ApiOne<T> = { ok: true; item: T };
 
 // --- HELPERS ---
 
@@ -155,7 +138,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [description, setDescription] = useState("");
 
   // Calculated selling price (gross)
-  const [priceGross, setPriceGross] = useState("0");
+  // (no priceGross state)
 
   // NEW: buy + margin
   const [buyPriceNet, setBuyPriceNet] = useState("");
@@ -164,17 +147,12 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [taxRateId, setTaxRateId] = useState("");
   const [isActive, setIsActive] = useState(true);
 
-  const [code, setCode] = useState("");
-  const [codeNorm, setCodeNorm] = useState("");
-  const [externalCode, setExternalCode] = useState("");
   const [brandId, setBrandId] = useState("");
+  const [categoryIdEdit, setCategoryIdEdit] = useState<string>("");
+
+  const [primaryCode, setPrimaryCode] = useState("");
 
   const [uom, setUom] = useState("buc");
-  const [weightKg, setWeightKg] = useState("");
-  const [lengthMm, setLengthMm] = useState("");
-  const [widthMm, setWidthMm] = useState("");
-  const [heightMm, setHeightMm] = useState("");
-  const [categoryIds, setCategoryIds] = useState<string[]>([]);
 
   // Equivalents (string[])
   const [equivCodes, setEquivCodes] = useState<string[]>([]);
@@ -221,13 +199,6 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       sellGrossRaw: round2(sellGrossRaw),
     };
   }, [buyPriceNet, marginPct, selectedTax]);
-
-  // Keep displayed price_gross synced to preview
-  useEffect(() => {
-    if (preview?.sellGross != null) {
-      setPriceGross(String(preview.sellGross));
-    }
-  }, [preview?.sellGross]);
 
   async function loadCategories() {
     const data = await apiJson<ApiList<Category>>(
@@ -291,20 +262,13 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     const defaultTaxId = taxOptions[0]?.id || taxRates[0]?.id || "";
     setTaxRateId(defaultTaxId);
 
-    setPriceGross("0");
     setIsActive(true);
-
-    setCode("");
-    setCodeNorm("");
-    setExternalCode("");
     setBrandId("");
+    setCategoryIdEdit("");
+
+    setPrimaryCode("");
 
     setUom("buc");
-    setWeightKg("");
-    setLengthMm("");
-    setWidthMm("");
-    setHeightMm("");
-    setCategoryIds([]);
 
     setEquivCodes([]);
     setNewEquivCode("");
@@ -337,29 +301,15 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       setIsActive(!!p.is_active);
 
       setBuyPriceNet(p.buy_price_net == null ? "" : String(p.buy_price_net));
-      setMarginPct(p.margin_pct == null ? "" : String(p.margin_pct));
+      setMarginPct(p.profit_margin_pct == null ? "" : String(p.profit_margin_pct));
 
-      // keep DB value initially; if buy+margin+tax present, preview will override visually
-      setPriceGross(String(p.price_gross ?? 0));
-
-      setCode(p.code || "");
-      setCodeNorm(p.code_normalized || "");
-      setExternalCode(p.external_code || "");
       setBrandId(p.brand_id || "");
+      setCategoryIdEdit(p.category_id ?? "");
+
+      setPrimaryCode(p.primary_code ?? "");
+      setEquivCodes(p.equivalent_codes ?? []);
 
       setUom(p.uom || "buc");
-      setWeightKg(p.weight_kg == null ? "" : String(p.weight_kg));
-      setLengthMm(p.length_mm == null ? "" : String(p.length_mm));
-      setWidthMm(p.width_mm == null ? "" : String(p.width_mm));
-      setHeightMm(p.height_mm == null ? "" : String(p.height_mm));
-
-      setCategoryIds((data.category_ids || []) as string[]);
-
-      const codesList = (p.codes || [])
-        .filter((c) => !c.is_primary)
-        .map((c) => c.code);
-
-      setEquivCodes(codesList);
 
       setModalOpen(true);
     } catch (e: any) {
@@ -367,16 +317,40 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
+  function splitEquivalentCodes(input: string) {
+    // IMPORTANT: part codes may contain spaces (e.g. "1K0 615 301"),
+    // so we only split by comma/semicolon/newline/TAB, not by whitespace.
+    return String(input ?? "")
+      .split(/[;,\n\r\t]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
   function handleAddCodeLocal() {
-    const val = newEquivCode.trim();
-    if (!val) return;
+    const parts = splitEquivalentCodes(newEquivCode);
+    if (parts.length === 0) return;
 
-    if (equivCodes.some((c) => c.toLowerCase() === val.toLowerCase())) {
-      alert("Acest cod este deja în listă.");
-      return;
-    }
+    setEquivCodes((prev) => {
+      const seen = new Set(prev.map((c) => c.toLowerCase()));
+      const next = [...prev];
 
-    setEquivCodes([...equivCodes, val]);
+      for (const raw of parts) {
+        const val = raw.trim();
+        if (!val) continue;
+
+        const key = val.toLowerCase();
+        if (seen.has(key)) continue;
+
+        // Optional: avoid adding the primary code into equivalents (comment out if you want to allow it)
+        if (primaryCode && key === primaryCode.trim().toLowerCase()) continue;
+
+        next.push(val);
+        seen.add(key);
+      }
+
+      return next;
+    });
+
     setNewEquivCode("");
   }
 
@@ -398,41 +372,31 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       description: description.trim() ? description : null,
 
       buy_price_net: buy,
-      margin_pct: mar,
-
-      // IMPORTANT: send integer gross (ceil-to-leu) when preview exists
-      price_gross: preview?.sellGross ?? Number(String(priceGross).replace(",", ".")),
+      profit_margin_pct: mar,
 
       tax_rate_id: taxRateId || null,
       is_active: isActive,
 
-      code: code.trim() ? code.trim() : null,
-      code_normalized: codeNorm.trim() ? codeNorm.trim() : null,
-      external_code: externalCode.trim() ? externalCode.trim() : null,
       brand_id: brandId.trim() ? brandId.trim() : null,
+      category_id: categoryIdEdit.trim() ? categoryIdEdit.trim() : null,
 
       uom: uom.trim() || "buc",
-      weight_kg: safeNum(weightKg),
-      length_mm: safeNum(lengthMm),
-      width_mm: safeNum(widthMm),
-      height_mm: safeNum(heightMm),
 
-      category_ids: categoryIds,
+      primary_code: primaryCode.trim() ? primaryCode.trim() : null,
       equivalent_codes: equivCodes,
     };
 
     if (!payload.sku || payload.sku.length < 2) return setError("SKU invalid.");
-    if (!payload.name || payload.name.length < 2) return setError("Numele este obligatoriu.");
+    if (!payload.name || payload.name.length < 2)
+      return setError("Numele este obligatoriu.");
     if (!payload.slug) return setError("Slug invalid.");
     if (!payload.tax_rate_id) return setError("Selectează TVA.");
 
     if (payload.buy_price_net == null || payload.buy_price_net < 0)
       return setError("Preț achiziție (fără TVA) invalid.");
-    if (payload.margin_pct == null || payload.margin_pct < 0)
+    if (payload.profit_margin_pct == null || payload.profit_margin_pct < 0)
       return setError("Marjă (%) invalidă.");
-
-    if (preview?.sellGross == null)
-      return setError("Nu pot calcula prețul final. Verifică TVA / marja / achiziția.");
+    if (!payload.primary_code) return setError("Cod principal obligatoriu.");
 
     try {
       if (!editId) {
@@ -469,11 +433,6 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  function toggleCategory(id: string) {
-    setCategoryIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }
 
   return (
     <div className="w-full">
@@ -481,7 +440,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Produse</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Administrare catalog: preț, TVA, brand, coduri, dimensiuni, categorii.
+            Administrare catalog: preț, TVA, brand, coduri, dimensiuni,
+            categorii.
           </p>
         </div>
 
@@ -562,7 +522,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               <th className="px-4 py-3 font-semibold text-slate-700">Produs</th>
               <th className="px-4 py-3 font-semibold text-slate-700">SKU</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Brand</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Preț (fara TVA)</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Achiziție (net)</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Marjă (%)</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Preț estimat (cu TVA)</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Activ</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Acțiuni</th>
             </tr>
@@ -570,7 +532,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-slate-600" colSpan={6}>
+                <td className="px-4 py-4 text-slate-600" colSpan={8}>
                   Nu există produse.
                 </td>
               </tr>
@@ -578,21 +540,39 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               items.map((p) => {
                 const brandName =
                   (p.brand_name as any) ||
-                  (p.brand_id ? brandOptions.find((b) => b.id === p.brand_id)?.name : "") ||
+                  (p.brand_id
+                    ? brandOptions.find((b) => b.id === p.brand_id)?.name
+                    : "") ||
                   "—";
+                const t = taxRates.find((x) => x.id === p.tax_rate_id);
+                const taxFrac = t ? normalizeTaxRate(t.rate) : null;
+                const gross =
+                  taxFrac == null
+                    ? null
+                    : ceilToLeu(Number(p.buy_price_net) * (1 + Number(p.profit_margin_pct) / 100) * (1 + taxFrac));
 
                 return (
                   <tr key={p.id} className="border-t border-slate-200">
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{p.name}</div>
+                      <div className="font-semibold text-slate-900">
+                        {p.name}
+                      </div>
                       <div className="text-xs text-slate-500">{p.slug}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{p.sku}</td>
                     <td className="px-4 py-3 text-slate-700">{brandName}</td>
                     <td className="px-4 py-3 text-slate-700">
-                      {Number(p.price_gross || 0).toFixed(2)} lei
+                      {Number(p.buy_price_net || 0).toFixed(2)} lei
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{p.is_active ? "Da" : "Nu"}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {Number(p.profit_margin_pct || 0).toFixed(2)}%
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {gross == null ? "—" : `${gross} lei`}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {p.is_active ? "Da" : "Nu"}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
@@ -628,7 +608,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   {editId ? "Editează produs" : "Adaugă produs"}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  Prețul final (cu TVA) este calculat automat: achiziție + marjă + TVA (rotunjire în sus la leu întreg).
+                  Prețul final (cu TVA) este calculat automat: achiziție + marjă
+                  + TVA (rotunjire în sus la leu întreg).
                 </div>
               </div>
               <button
@@ -642,13 +623,16 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
             <div className="grid gap-5 px-5 py-5 md:grid-cols-2">
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Nume</label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Nume
+                  </label>
                   <input
                     value={name}
                     onChange={(e) => {
                       const v = e.target.value;
                       setName(v);
-                      if (!editId && (!slug || slug === slugify(name))) setSlug(slugify(v));
+                      if (!editId && (!slug || slug === slugify(name)))
+                        setSlug(slugify(v));
                     }}
                     className={inputBase}
                   />
@@ -656,16 +640,28 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">SKU</label>
-                    <input value={sku} onChange={(e) => setSku(e.target.value)} className={inputBase} />
+                    <label className="text-xs font-semibold text-slate-600">
+                      SKU
+                    </label>
+                    <input
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      className={inputBase}
+                    />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Slug</label>
-                    <input value={slug} onChange={(e) => setSlug(e.target.value)} className={inputBase} />
+                    <label className="text-xs font-semibold text-slate-600">
+                      Slug
+                    </label>
+                    <input
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      className={inputBase}
+                    />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600">Achiziție (fără TVA)</label>
                     <input
@@ -687,9 +683,18 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   </div>
 
                   <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">Preț net (vânzare)</label>
+                    <input
+                      value={preview?.sellNet != null ? String(preview.sellNet) : ""}
+                      readOnly
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600">Preț final (cu TVA)</label>
                     <input
-                      value={preview?.sellGross != null ? String(preview.sellGross) : priceGross}
+                      value={preview?.sellGross != null ? String(preview.sellGross) : ""}
                       readOnly
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     />
@@ -698,8 +703,14 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">TVA</label>
-                    <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)} className={selectBase}>
+                    <label className="text-xs font-semibold text-slate-600">
+                      TVA
+                    </label>
+                    <select
+                      value={taxRateId}
+                      onChange={(e) => setTaxRateId(e.target.value)}
+                      className={selectBase}
+                    >
                       <option value="">Selectează TVA</option>
                       {taxOptions.map((t) => (
                         <option key={t.id} value={t.id}>
@@ -710,8 +721,14 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Brand</label>
-                    <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className={selectBase}>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Brand
+                    </label>
+                    <select
+                      value={brandId}
+                      onChange={(e) => setBrandId(e.target.value)}
+                      className={selectBase}
+                    >
                       <option value="">— Fără brand —</option>
                       {brandOptions.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -723,48 +740,77 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Descriere</label>
-                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className={inputBase} />
+                  <label className="text-xs font-semibold text-slate-600">
+                    Descriere
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    className={inputBase}
+                  />
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                  />
                   Produs activ
                 </label>
 
-                <div className="space-y-2 pt-2">
-                  <div className="text-xs font-semibold text-slate-600">Categorii</div>
-                  <div className="max-h-48 overflow-auto rounded-xl border border-slate-200 p-3">
-                    {categoryOptions.length === 0 ? (
-                      <div className="text-sm text-slate-500">Nu există categorii.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {categoryOptions.map((c) => (
-                          <label key={c.id} className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="checkbox" checked={categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} />
-                            {c.name}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">
+                    Categorie
+                  </label>
+                  <select
+                    value={categoryIdEdit}
+                    onChange={(e) => setCategoryIdEdit(e.target.value)}
+                    className={selectBase}
+                  >
+                    <option value="">— Fără categorie —</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">
+                    Cod principal (Piesa)
+                  </label>
+                  <input
+                    value={primaryCode}
+                    onChange={(e) => setPrimaryCode(e.target.value)}
+                    placeholder="ex: 1K0 615 301"
+                    className={inputBase}
+                  />
+                </div>
+
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-slate-600">Coduri Echivalente (OE / Cross)</div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Coduri Echivalente (OE / Cross)
+                  </div>
                   <div className="rounded-xl border border-slate-200 p-3">
                     <div className="max-h-40 overflow-y-auto space-y-2 mb-3">
                       {equivCodes.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic">Niciun cod echivalent.</p>
+                        <p className="text-xs text-slate-500 italic">
+                          Niciun cod echivalent.
+                        </p>
                       ) : (
                         equivCodes.map((c, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between border-b border-slate-100 pb-1 last:border-0 last:pb-0"
                           >
-                            <span className="text-xs font-medium text-slate-900">{c}</span>
+                            <span className="text-xs font-medium text-slate-900">
+                              {c}
+                            </span>
                             {isAdmin && (
                               <button
                                 onClick={() => handleRemoveCodeLocal(c)}
@@ -780,60 +826,48 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     </div>
 
                     {isAdmin && (
-                      <div className="flex gap-2 border-t border-slate-100 pt-3">
-                        <input
-                          value={newEquivCode}
-                          onChange={(e) => setNewEquivCode(e.target.value)}
-                          placeholder="Adaugă cod (ex: A001..)"
-                          className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#feab1f]"
-                        />
-                        <button
-                          onClick={handleAddCodeLocal}
-                          type="button"
-                          className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-800"
-                        >
-                          +
-                        </button>
-                      </div>
+                      <>
+                        <div className="flex gap-2 border-t border-slate-100 pt-3">
+                          <textarea
+                            value={newEquivCode}
+                            onChange={(e) => setNewEquivCode(e.target.value)}
+                            onKeyDown={(e) => {
+                              // In textarea, Enter should add a new line.
+                              // Use Ctrl+Enter / Cmd+Enter to add the codes.
+                              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                handleAddCodeLocal();
+                              }
+                            }}
+                            placeholder="Adaugă coduri (separate prin virgulă / ; / linii noi). Ctrl+Enter / Cmd+Enter = adaugă."
+                            rows={2}
+                            className="flex-1 resize-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#feab1f]"
+                          ></textarea>
+                          <button
+                            onClick={handleAddCodeLocal}
+                            type="button"
+                            className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-800"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="mt-2 text-[11px] text-slate-500">
+                          Poți lipi mai multe coduri (unul pe linie) sau separate prin virgulă / ;.
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Cod Intern</label>
-                    <input value={code} onChange={(e) => setCode(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Cod Extern</label>
-                    <input value={externalCode} onChange={(e) => setExternalCode(e.target.value)} className={inputBase} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">UM (uom)</label>
-                    <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Greutate (kg)</label>
-                    <input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="0.00" className={inputBase} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">L (mm)</label>
-                    <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">l (mm)</label>
-                    <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} className={inputBase} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">h (mm)</label>
-                    <input value={heightMm} onChange={(e) => setHeightMm(e.target.value)} className={inputBase} />
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">
+                    UM (uom)
+                  </label>
+                  <input
+                    value={uom}
+                    onChange={(e) => setUom(e.target.value)}
+                    className={inputBase}
+                  />
                 </div>
 
                 {error ? (
@@ -860,7 +894,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   Salvează
                 </button>
               ) : (
-                <button disabled className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
+                <button
+                  disabled
+                  className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-500"
+                >
                   Doar vizualizare
                 </button>
               )}

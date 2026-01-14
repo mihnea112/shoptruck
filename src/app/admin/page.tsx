@@ -80,7 +80,7 @@ export default async function AdminHomePage() {
     sql`SELECT COUNT(*)::int AS n FROM brand`,
     sql`SELECT COUNT(*)::int AS n FROM tax_rate`,
     sql`
-      SELECT id, name, sku, slug, price_gross, is_active, created_at
+      SELECT id, name, sku, slug, buy_price_net, profit_margin_pct, is_active, created_at
       FROM product
       ORDER BY created_at DESC
       LIMIT 8
@@ -98,7 +98,8 @@ export default async function AdminHomePage() {
     name: string;
     sku: string;
     slug: string;
-    price_gross: number;
+    buy_price_net: number | null;
+    profit_margin_pct: number | null;
     is_active: boolean;
     created_at: string;
   }[];
@@ -245,17 +246,12 @@ export default async function AdminHomePage() {
                   </div>
                   <div className="ml-4 flex items-center gap-2">
                     <span className="text-xs font-semibold text-slate-700">
-                      {Number(p.price_gross || 0).toFixed(2)} lei
+                      {p.buy_price_net == null
+                        ? "—"
+                        : `${Number(p.buy_price_net).toFixed(2)} lei`}
                     </span>
-                    <span
-                      className={
-                        "rounded-full px-2 py-1 text-[11px] font-semibold " +
-                        (p.is_active
-                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                          : "bg-slate-100 text-slate-700 border border-slate-200")
-                      }
-                    >
-                      {p.is_active ? "Activ" : "Inactiv"}
+                    <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 sm:inline-flex">
+                      Marjă: {p.profit_margin_pct == null ? "—" : `${Number(p.profit_margin_pct)}%`}
                     </span>
                   </div>
                 </div>
