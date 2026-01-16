@@ -10,7 +10,9 @@ import OfferDownloadButton from "@/components/admin/OfferDownloadButton";
 
 // --- STYLE & ICONS ---
 const inputBase =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#feab1f] transition-colors";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 " +
+  "placeholder:text-slate-500 caret-slate-950 outline-none transition-colors " +
+  "focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25";
 const tableHeader =
   "px-4 py-3 font-semibold text-slate-700 bg-slate-50 text-xs uppercase tracking-wide";
 const Icons = {
@@ -87,16 +89,30 @@ type OfferItemUI = {
   productId?: string;
   name: string;
   qty: number;
+
+  /** numeric unit net price used for totals/payload */
   price: number;
+
+  /** base/catalog unit net price used for +/-50% rule */
+  basePrice?: number;
+
+  /** what user typed (string), so we don't snap while typing */
+  priceDraft?: string;
+
+  /** validation message (null if ok) */
+  priceError?: string | null;
+
   tax: number;
 };
 
 type VehicleState = {
   id?: string;
-  vin: string;
-  brand: string;
+  chassis_vin: string;
+  plate_no: string;
+  make: string;
   model: string;
-  plate_number: string;
+  series: string;
+  engine_code: string;
   year: number;
 };
 
@@ -114,10 +130,12 @@ export default function EditOfferPage({
   const [customer, setCustomer] = useState<CustomerDTO | null>(null);
   const [vehicle, setVehicle] = useState<VehicleState>({
     id: "",
-    vin: "",
-    brand: "",
+    chassis_vin: "",
+    plate_no: "",
+    make: "",
     model: "",
-    plate_number: "",
+    series: "",
+    engine_code: "",
     year: new Date().getFullYear(),
   });
 
@@ -146,22 +164,38 @@ export default function EditOfferPage({
         const vData = d.vehicle || {};
         setVehicle({
           id: d.vehicle_id || vData.id || "",
-          vin: vData.vin || "",
-          brand: vData.brand || "",
+          chassis_vin: vData.chassis_vin || vData.vin || "",
+          plate_no: vData.plate_no || vData.plate_number || "",
+          make: vData.make || vData.brand || "",
           model: vData.model || "",
-          plate_number: vData.plate_number || "",
+          series: vData.series || "",
+          engine_code: vData.engine_code || "",
           year: vData.year || new Date().getFullYear(),
         });
 
         // Mapam items
         setItems(
-          d.items.map((i: any) => ({
-            ...i,
-            price: Number(i.price),
-            qty: Number(i.quantity || i.qty),
-            tax: Number(i.tax || i.tax_percentage),
-            id: i.id || Date.now() + Math.random(),
-          }))
+          d.items.map((i: any) => {
+            const price = Number(i.price);
+            const basePrice = Number.isFinite(Number(i.base_price))
+              ? Number(i.base_price)
+              : Number.isFinite(price)
+              ? price
+              : 0;
+
+            const numericPrice = Number.isFinite(price) ? price : 0;
+
+            return {
+              ...i,
+              price: numericPrice,
+              basePrice,
+              priceDraft: Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : "0.00",
+              priceError: null,
+              qty: Number(i.quantity || i.qty),
+              tax: Number(i.tax || i.tax_percentage),
+              id: i.id || Date.now() + Math.random(),
+            };
+          })
         );
 
         setNotes(d.notes || "");
@@ -196,13 +230,58 @@ export default function EditOfferPage({
   const addItem = () =>
     setItems([
       ...items,
-      { id: Date.now(), name: "", qty: 1, price: 0, tax: 19 },
+      {
+        id: Date.now(),
+        name: "",
+        qty: 1,
+        price: 0,
+        basePrice: undefined,
+        priceDraft: "0.00",
+        priceError: null,
+        tax: 19,
+      },
     ]);
 
   const removeItem = (id: number) => setItems(items.filter((i) => i.id !== id));
 
   const updateQty = (id: number, qty: number) =>
     setItems(items.map((i) => (i.id === id ? { ...i, qty } : i)));
+
+  const updatePriceDraft = (id: number, draft: string) => {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== id) return i;
+
+        const d = String(draft ?? "");
+        const normalized = d.trim().replace(/\s+/g, "").replace(",", ".");
+
+        if (normalized === "") {
+          return { ...i, priceDraft: d, priceError: "Preț obligatoriu." };
+        }
+
+        const parsed = Number(normalized);
+        if (!Number.isFinite(parsed)) {
+          return { ...i, priceDraft: d, priceError: "Format preț invalid." };
+        }
+
+        const base = Number(i.basePrice ?? 0);
+        let err: string | null = null;
+
+        if (Number.isFinite(base) && base > 0) {
+          const min = base * 0.5;
+          const max = base * 1.5;
+          if (parsed < min || parsed > max) {
+            err = `Prețul trebuie să fie între ${min.toFixed(2)} și ${max.toFixed(
+              2
+            )} (bază ${base.toFixed(2)}).`;
+          }
+        }
+
+        // Keep numeric price in sync, but DO NOT clamp/snap
+        return { ...i, priceDraft: d, price: parsed, priceError: err };
+      })
+    );
+  };
 
   const handleProductSelect = (id: number, product: ProductDTO) => {
     setItems(
@@ -212,7 +291,13 @@ export default function EditOfferPage({
               ...i,
               productId: product.id,
               name: product.name,
+              // reset both the editable price and baseline to the catalog price
               price: Number(product.price),
+              basePrice: Number(product.price),
+              priceDraft: Number.isFinite(Number(product.price))
+                ? Number(product.price).toFixed(2)
+                : "0.00",
+              priceError: null,
               tax: Number(product.vat_percent),
             }
           : i
@@ -223,6 +308,12 @@ export default function EditOfferPage({
   // --- LOGICA DE UPDATE (PUT) ---
   async function handleUpdate() {
     if (!customer?.id) return alert("Selectează un client!");
+    const badPrice = items.find((i) => i.priceError);
+    if (badPrice) {
+      return alert(
+        "Există rânduri cu preț invalid (în afara intervalului permis sau format greșit)."
+      );
+    }
 
     setLoading(true);
 
@@ -333,43 +424,101 @@ export default function EditOfferPage({
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <input
-                className={inputBase} // Am scos bg-slate-50 si disabled
-                value={vehicle.vin || ""}
+                className={`${inputBase} font-mono uppercase`}
+                value={vehicle.chassis_vin || ""}
                 onChange={(e) =>
-                  setVehicle({ ...vehicle, vin: e.target.value })
+                  setVehicle({
+                    ...vehicle,
+                    chassis_vin: e.target.value.toUpperCase(),
+                  })
                 }
-                placeholder="VIN (Serie Șasiu)"
+                placeholder="VIN / Serie șasiu (chassis_vin)"
               />
             </div>
+
+            <div className="col-span-1">
+              <input
+                className={`${inputBase} uppercase`}
+                value={vehicle.plate_no || ""}
+                onChange={(e) =>
+                  setVehicle({
+                    ...vehicle,
+                    plate_no: e.target.value.toUpperCase(),
+                  })
+                }
+                placeholder="Nr. înmatriculare (plate_no)"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <input
+                type="number"
+                className={inputBase}
+                value={vehicle.year}
+                onChange={(e) =>
+                  setVehicle({
+                    ...vehicle,
+                    year: Number(e.target.value || new Date().getFullYear()),
+                  })
+                }
+                placeholder="An"
+              />
+            </div>
+
             <div className="col-span-1">
               <input
                 className={inputBase}
-                value={vehicle.plate_number || ""}
+                value={vehicle.make || ""}
                 onChange={(e) =>
-                  setVehicle({ ...vehicle, plate_number: e.target.value })
+                  setVehicle({
+                    ...vehicle,
+                    make: e.target.value,
+                  })
                 }
-                placeholder="Număr Auto"
+                placeholder="Marcă (make)"
               />
             </div>
+
             <div className="col-span-1">
-              <div className="flex gap-2">
-                <input
-                  className={inputBase}
-                  value={vehicle.brand || ""}
-                  onChange={(e) =>
-                    setVehicle({ ...vehicle, brand: e.target.value })
-                  }
-                  placeholder="Marcă"
-                />
-                <input
-                  className={inputBase}
-                  value={vehicle.model || ""}
-                  onChange={(e) =>
-                    setVehicle({ ...vehicle, model: e.target.value })
-                  }
-                  placeholder="Model"
-                />
-              </div>
+              <input
+                className={inputBase}
+                value={vehicle.model || ""}
+                onChange={(e) =>
+                  setVehicle({
+                    ...vehicle,
+                    model: e.target.value,
+                  })
+                }
+                placeholder="Model"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <input
+                className={inputBase}
+                value={vehicle.series || ""}
+                onChange={(e) =>
+                  setVehicle({
+                    ...vehicle,
+                    series: e.target.value,
+                  })
+                }
+                placeholder="Serie / versiune (series)"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <input
+                className={inputBase}
+                value={vehicle.engine_code || ""}
+                onChange={(e) =>
+                  setVehicle({
+                    ...vehicle,
+                    engine_code: e.target.value,
+                  })
+                }
+                placeholder="Cod motor (engine_code)"
+              />
             </div>
           </div>
         </div>
@@ -418,8 +567,42 @@ export default function EditOfferPage({
                       }
                     />
                   </td>
-                  <td className="px-4 py-2 border-t border-slate-200 text-right text-slate-500">
-                    {rowPrice.toFixed(2)}
+                  <td className="px-4 py-2 border-t border-slate-200">
+                    {(() => {
+                      const base = Number(item.basePrice ?? rowPrice ?? 0);
+                      const hasBase = Number.isFinite(base) && base > 0;
+                      const min = hasBase ? base * 0.5 : 0;
+                      const max = hasBase ? base * 1.5 : undefined;
+
+                      return (
+                        <div className="flex flex-col items-end gap-1">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className={
+                              "w-full rounded-lg border bg-white px-2 py-1.5 text-right text-slate-950 placeholder:text-slate-500 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25 " +
+                              (item.priceError
+                                ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                                : "border-slate-300")
+                            }
+                            value={
+                              item.priceDraft ??
+                              (Number.isFinite(Number(rowPrice)) ? Number(rowPrice).toFixed(2) : "")
+                            }
+                            onChange={(e) => updatePriceDraft(item.id, e.target.value)}
+                            placeholder="0.00"
+                          />
+                          {hasBase ? (
+                            <div className="text-[11px] text-slate-500">
+                              Permis: {min.toFixed(2)} – {(max as number).toFixed(2)} (bază {base.toFixed(2)})
+                            </div>
+                          ) : null}
+                          {item.priceError ? (
+                            <div className="text-[11px] text-red-600">{item.priceError}</div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-2 border-t border-slate-200 text-center text-slate-500">
                     {rowTax}%

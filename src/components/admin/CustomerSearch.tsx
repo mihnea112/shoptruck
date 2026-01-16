@@ -2,6 +2,16 @@
 
 import { useState, useEffect, useRef } from "react";
 
+const inputBase =
+  "w-full rounded-xl border border-slate-300 !bg-white px-3 py-2.5 text-sm !text-slate-950 " +
+  "placeholder:!text-slate-500 caret-slate-950 outline-none transition-colors " +
+  "focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25";
+
+const inputBaseSm =
+  "w-full rounded-lg border border-slate-300 !bg-white px-3 py-2 text-sm !text-slate-950 " +
+  "placeholder:!text-slate-500 caret-slate-950 outline-none transition-colors " +
+  "focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25";
+
 // Definim tipul DTO (Data Transfer Object) folosit in comunicarea cu API
 export type CustomerDTO = {
   id?: string;
@@ -80,10 +90,26 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
   // 3. Salvare Client Nou (API)
   async function saveNewCustomer() {
     try {
+      const displayName =
+        newCust.kind === "company"
+          ? String(newCust.company_name ?? "").trim()
+          : `${String(newCust.last_name ?? "").trim()} ${String(newCust.first_name ?? "").trim()}`.trim();
+
+      const payload: any = {
+        ...newCust,
+        display_name: displayName || null,
+
+        // aliases for newer DB/account fields (if your API expects them)
+        tax_id: newCust.vat_id || null,
+        reg_no: newCust.reg_no || null,
+        phone: newCust.kind === "company" ? (newCust.contact_phone || null) : (newCust.phone || null),
+        legal_name: newCust.kind === "company" ? (newCust.company_name || null) : null,
+      };
+
       const res = await fetch("/api/admin/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newCust),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -94,8 +120,8 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
           id: data.customerId,
           display_name:
             newCust.kind === "company"
-              ? newCust.company_name
-              : `${newCust.first_name} ${newCust.last_name}`,
+              ? String(newCust.company_name ?? "").trim()
+              : `${String(newCust.last_name ?? "").trim()} ${String(newCust.first_name ?? "").trim()}`.trim(),
         };
         handleSelect(created);
         setShowCreateModal(false);
@@ -120,13 +146,13 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
 
   return (
     <div className="relative w-full" ref={wrapperRef}>
-      <label className="block text-sm font-medium text-slate-700 mb-1">Caută Client</label>
+      <label className="block text-sm font-semibold text-slate-700 mb-1">Caută Client</label>
       
       {/* Input Search */}
       <div className="relative">
         <input
           type="text"
-          className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className={inputBaseSm}
           placeholder="Nume, CUI, Telefon..."
           value={query}
           onChange={(e) => {
@@ -148,7 +174,7 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
               <button
                 key={r.id}
                 onClick={() => handleSelect(r)}
-                className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                className="block w-full bg-white px-4 py-2 text-left text-sm text-slate-900 hover:bg-slate-50 border-b border-slate-100 last:border-0"
               >
                 <div className="font-semibold text-slate-800">{r.display_name}</div>
                 <div className="text-xs text-slate-500">
@@ -165,7 +191,7 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
           {/* Buton Create New */}
           <button
             onClick={() => { setShowDropdown(false); setShowCreateModal(true); }}
-            className="block w-full bg-blue-50 px-4 py-3 text-center text-sm font-semibold text-blue-700 hover:bg-blue-100 rounded-b-lg"
+            className="block w-full bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-b-lg"
           >
             + Creează Client Nou
           </button>
@@ -212,20 +238,20 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
                   <div className="grid grid-cols-2 gap-3">
                     <input 
                       placeholder="Prenume" 
-                      className="border rounded p-2 text-sm w-full"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.first_name}
                       onChange={e => setNewCust({...newCust, first_name: e.target.value})}
                     />
                     <input 
                       placeholder="Nume Familie" 
-                      className="border rounded p-2 text-sm w-full"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.last_name}
                       onChange={e => setNewCust({...newCust, last_name: e.target.value})}
                     />
                   </div>
                   <input 
                     placeholder="Telefon" 
-                    className="border rounded p-2 text-sm w-full"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                     value={newCust.phone}
                     onChange={e => setNewCust({...newCust, phone: e.target.value})}
                   />
@@ -234,33 +260,33 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
                 <>
                   <input 
                     placeholder="Nume Firmă (ex: SC TEST SRL)" 
-                    className="border rounded p-2 text-sm w-full"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                     value={newCust.company_name}
                     onChange={e => setNewCust({...newCust, company_name: e.target.value})}
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <input 
                       placeholder="CUI (ex: RO123456)" 
-                      className="border rounded p-2 text-sm w-full"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.vat_id}
                       onChange={e => setNewCust({...newCust, vat_id: e.target.value})}
                     />
                      <input 
                       placeholder="Nr. Reg. Com (J40/...)" 
-                      className="border rounded p-2 text-sm w-full"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.reg_no}
                       onChange={e => setNewCust({...newCust, reg_no: e.target.value})}
                     />
                   </div>
                   <input 
                       placeholder="Persoană Contact / Delegat" 
-                      className="border rounded p-2 text-sm w-full"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.contact_name}
                       onChange={e => setNewCust({...newCust, contact_name: e.target.value})}
                     />
                     <input 
                       placeholder="Telefon Firmă" 
-                      className="border rounded p-2 text-sm w-full"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.contact_phone}
                       onChange={e => setNewCust({...newCust, contact_phone: e.target.value})}
                     />

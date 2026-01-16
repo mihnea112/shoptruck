@@ -21,28 +21,42 @@ export async function GET(req: Request) {
   if (!qRaw) return json({ ok: true, items: [] });
 
   const qNorm = normalizeCode(qRaw);
+  const qLike = `%${qRaw}%`;
 
   const rows = await sql`
     WITH hit AS (
       SELECT p.id
       FROM product p
-      WHERE p.sku ILIKE ${qRaw}
-         OR p.slug ILIKE ${qRaw}
+      WHERE p.sku ILIKE ${qLike}
+         OR p.slug ILIKE ${qLike}
+         OR p.name ILIKE ${qLike}
+
       UNION
+
       SELECT pc.product_id
       FROM product_code pc
-      WHERE pc.code_normalized = ${qNorm}
-      UNION
-      SELECT pb.product_id
-      FROM product_barcode pb
-      WHERE pb.barcode = ${qRaw}
+      JOIN part_code c ON c.id = pc.code_id
+      WHERE c.code_norm = ${qNorm}
+         OR c.code_raw ILIKE ${qLike}
+
       LIMIT 20
     )
     SELECT
-      p.id, p.sku, p.slug, p.name,
-      p.price_gross, p.buy_price_net, p.profit_margin_pct,
+      p.id,
+      p.sku,
+      p.slug,
+      p.name,
+
+      p.buy_price_net,
+      p.profit_margin_pct,
       p.is_active,
-      tr.name AS tax_name
+
+      tr.name AS tax_name,
+      tr.rate AS tax_rate,
+
+      -- Convenience fields for UI
+      (CEILING((p.buy_price_net * (1 + (p.profit_margin_pct / 100.0))) * 100) / 100.0) AS price,
+      (tr.rate * 100)::int AS vat_percent
     FROM hit
     JOIN product p ON p.id = hit.id
     LEFT JOIN tax_rate tr ON tr.id = p.tax_rate_id

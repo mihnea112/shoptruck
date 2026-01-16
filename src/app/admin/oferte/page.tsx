@@ -23,10 +23,28 @@ export default function OffersListPage() {
 
   const fetchOffers = async () => {
     setLoading(true);
-    const res = await fetch("/api/admin/offers");
-    const data = await res.json();
-    if (data.ok) setOffers(data.offers);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/admin/offers", {
+        headers: { accept: "application/json" },
+      });
+      const data = await res.json().catch(() => ({} as any));
+
+      if (res.ok && data?.ok) {
+        // Support multiple response shapes: { offers: [] } or { items: [] }
+        const list = Array.isArray(data.offers)
+          ? data.offers
+          : Array.isArray(data.items)
+          ? data.items
+          : [];
+        setOffers(list);
+      } else {
+        setOffers([]);
+      }
+    } catch {
+      setOffers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -43,7 +61,7 @@ export default function OffersListPage() {
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-xl font-bold text-slate-800">Oferte Service</h1>
+        <h1 className="text-xl font-bold text-slate-800">Oferte</h1>
         <Link href="/admin/oferte/noua" className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 text-sm font-medium">
           <Icons.Plus /> Ofertă Nouă
         </Link>
@@ -63,15 +81,23 @@ export default function OffersListPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr><td colSpan={5} className="p-4 text-center text-slate-500">Se încarcă...</td></tr>
-            ) : offers.length === 0 ? (
+            ) : (offers?.length ?? 0) === 0 ? (
               <tr><td colSpan={5} className="p-4 text-center text-slate-500">Nu există oferte.</td></tr>
             ) : (
-              offers.map((o) => (
+              (offers ?? []).map((o) => (
                 <tr key={o.id} className="hover:bg-slate-50 transition">
-                  <td className="px-4 py-3 font-medium text-slate-900">{o.clientName}</td>
-                  <td className="px-4 py-3 text-slate-600 font-mono text-xs">{o.vehicle}</td>
-                  <td className="px-4 py-3 text-slate-500">{new Date(o.date).toLocaleDateString("ro-RO")}</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-800">{Number(o.total).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    {o?.account?.name ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 font-mono text-xs">
+                    {o?.vehicle?.label ?? o?.vehicle?.plate_no ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {o?.created_at ? new Date(o.created_at).toLocaleDateString("ro-RO") : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold text-slate-800">
+                    {Number(o?.total_gross ?? 0).toFixed(2)}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-center gap-2">
                       

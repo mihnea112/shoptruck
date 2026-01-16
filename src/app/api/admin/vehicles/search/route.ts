@@ -15,14 +15,45 @@ export async function GET(req: NextRequest) {
 
     const term = `%${q}%`;
     const rows = await sql`
-      SELECT id, vin, brand, model, plate_number, year
+      SELECT
+        id,
+        chassis_vin,
+        plate_no,
+        make,
+        model,
+        series,
+        engine_code,
+        year
       FROM vehicle
-      WHERE vin ILIKE ${term} OR plate_number ILIKE ${term}
+      WHERE chassis_vin ILIKE ${term} OR plate_no ILIKE ${term}
       LIMIT 1
     `;
 
+    const v = rows.length > 0 ? (rows as any)[0] : null;
+
+    // Return both new keys and legacy keys so older UI/components won't break.
+    const vehicle = v
+      ? {
+          id: v.id,
+
+          // New schema keys
+          chassis_vin: v.chassis_vin,
+          plate_no: v.plate_no,
+          make: v.make,
+          model: v.model,
+          series: v.series,
+          engine_code: v.engine_code,
+          year: v.year,
+
+          // Legacy aliases (temporary)
+          vin: v.chassis_vin,
+          plate_number: v.plate_no,
+          brand: v.make,
+        }
+      : null;
+
     return NextResponse.json(
-      { ok: true, vehicle: rows.length > 0 ? rows[0] : null },
+      { ok: true, vehicle },
       { headers: { "cache-control": "no-store" } }
     );
   } catch (e: any) {
