@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard" },
@@ -13,6 +14,22 @@ const adminNav = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.assign('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <aside className="hidden w-72 border-r border-slate-200 bg-slate-50/80 px-4 py-6 text-sm md:block">
@@ -50,6 +67,20 @@ export function AdminSidebar() {
           );
         })}
       </nav>
+      <div className="mt-6 border-t border-slate-200 pt-4">
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className={
+            `w-full rounded-xl px-3.5 py-2.5 text-left text-xs font-medium transition ` +
+            (loggingOut
+              ? "cursor-not-allowed bg-white text-slate-400"
+              : "text-slate-700 hover:bg-white hover:text-slate-900")
+          }
+        >
+          {loggingOut ? "Se deloghează…" : "Logout"}
+        </button>
+      </div>
     </aside>
   );
 }

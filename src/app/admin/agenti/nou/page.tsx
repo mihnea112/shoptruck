@@ -18,6 +18,60 @@ async function createAgent(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
+  const newRoleKeyRaw = String(formData.get("newRoleKey") ?? "").trim();
+  const newRoleKey = newRoleKeyRaw
+    ? newRoleKeyRaw
+        .toUpperCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^A-Z0-9_]/g, "")
+    : "";
+
+  const roleKeys = (formData.getAll("roleKey") as string[])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  const permissionKeys = (formData.getAll("permissionKey") as string[])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  // Roles are optional in UI. If none selected, default to SALES_REP.
+  // IMPORTANT: if the role row doesn't exist yet, we attempt to create it (best-effort)
+  // so new users never end up with 0 roles.
+  const DEFAULT_ROLE = "SALES_REP";
+
+  const effectiveRoleKeys: string[] = roleKeys.length > 0 ? [...roleKeys] : [DEFAULT_ROLE];
+
+  // Optionally create a new role (best-effort). If the role table has extra NOT NULL columns,
+  // this insert may fail; we ignore and continue so the user can still be created.
+  if (newRoleKey) {
+    try {
+      await sql`
+        INSERT INTO role (key)
+        VALUES (${newRoleKey})
+        ON CONFLICT DO NOTHING
+      `;
+    } catch {
+      // ignore (schema may require additional fields)
+    }
+
+    if (!effectiveRoleKeys.includes(newRoleKey)) {
+      effectiveRoleKeys.push(newRoleKey);
+    }
+  }
+
+  // Ensure all roles we intend to assign exist (best-effort).
+  for (const rk of effectiveRoleKeys) {
+    try {
+      await sql`
+        INSERT INTO role (key)
+        VALUES (${rk})
+        ON CONFLICT DO NOTHING
+      `;
+    } catch {
+      // ignore
+    }
+  }
+
   if (!email || !email.includes("@")) {
     redirect(`/admin/agenti/nou?error=${encodeURIComponent("Email invalid.")}`);
   }
@@ -40,28 +94,81 @@ async function createAgent(formData: FormData) {
 
   const passwordHash = await argon2.hash(password);
 
-  const rows = await sql`
-    WITH new_user AS (
-      INSERT INTO app_user (email, password_hash, kind, is_active)
-      VALUES (${email}, ${passwordHash}, 'staff', true)
-      RETURNING id
-    ),
-    role_link AS (
-      INSERT INTO user_role (user_id, role_id)
-      SELECT nu.id, r.id
-      FROM new_user nu
-      JOIN role r ON r.key = 'SALES_REP'
-      ON CONFLICT DO NOTHING
-      RETURNING user_id
-    )
-    SELECT (SELECT id FROM new_user) AS user_id
+  const created = await sql`
+    INSERT INTO app_user (email, password_hash, kind, is_active)
+    VALUES (${email}, ${passwordHash}, 'staff', true)
+    RETURNING id
   `;
 
-  const userId = (rows as any[])?.[0]?.user_id as string | undefined;
+  const userId = (created as any[])?.[0]?.id as string | undefined;
   if (!userId) {
     redirect(
       `/admin/agenti/nou?error=${encodeURIComponent("Eroare la creare utilizator.")}`
     );
+  }
+
+  // Assign selected roles
+  for (const rk of effectiveRoleKeys) {
+    await sql`
+      INSERT INTO user_role (user_id, role_id)
+      SELECT ${userId}::uuid, r.id
+      FROM role r
+      WHERE r.key = ${rk}
+      ON CONFLICT DO NOTHING
+    `;
+  }
+
+  // Safety: if, for any reason, no role was assigned (e.g., role schema prevented inserts),
+  // try to assign DEFAULT_ROLE so the staff user can access staff pages.
+  const assigned = await sql`
+    SELECT 1
+    FROM user_role ur
+    WHERE ur.user_id = ${userId}::uuid
+    LIMIT 1
+  `;
+
+  if (!Array.isArray(assigned) || assigned.length === 0) {
+    try {
+      await sql`
+        INSERT INTO role (key)
+        VALUES (${DEFAULT_ROLE})
+        ON CONFLICT DO NOTHING
+      `;
+    } catch {
+      // ignore
+    }
+
+    await sql`
+      INSERT INTO user_role (user_id, role_id)
+      SELECT ${userId}::uuid, r.id
+      FROM role r
+      WHERE r.key = ${DEFAULT_ROLE}
+      ON CONFLICT DO NOTHING
+    `;
+  }
+
+  // Assign selected permissions ONLY if tables exist
+  const permTables = await sql`
+    SELECT
+      to_regclass('public.permission') AS permission_table,
+      to_regclass('public.user_permission') AS user_permission_table
+  `;
+  const hasPermTables =
+    Array.isArray(permTables) &&
+    permTables.length > 0 &&
+    !!(permTables as any[])[0]?.permission_table &&
+    !!(permTables as any[])[0]?.user_permission_table;
+
+  if (hasPermTables && permissionKeys.length > 0) {
+    for (const pk of permissionKeys) {
+      await sql`
+        INSERT INTO user_permission (user_id, permission_id)
+        SELECT ${userId}::uuid, p.id
+        FROM permission p
+        WHERE p.key = ${pk}
+        ON CONFLICT DO NOTHING
+      `;
+    }
   }
 
   // NOTE: fullName is currently not persisted (no staff/profile table in DB).
@@ -89,11 +196,30 @@ export default async function AgentNouPage({ searchParams }: PageProps) {
   const error = safeDecode(sp?.error);
   const ok = safeDecode(sp?.ok);
 
+  const roleRows = (await sql`SELECT key FROM role ORDER BY key`) as any[];
+  const roles = (roleRows || []).map((r) => String(r.key));
+
+  const permTables = await sql`
+    SELECT
+      to_regclass('public.permission') AS permission_table,
+      to_regclass('public.user_permission') AS user_permission_table
+  `;
+  const hasPermTables =
+    Array.isArray(permTables) &&
+    permTables.length > 0 &&
+    !!(permTables as any[])[0]?.permission_table &&
+    !!(permTables as any[])[0]?.user_permission_table;
+
+  const permRows = hasPermTables
+    ? (((await sql`SELECT key FROM permission ORDER BY key`) as any[]) || [])
+    : [];
+  const permissions = permRows.map((p) => String(p.key));
+
   return (
     <div className="max-w-xl">
       <h1 className="text-lg font-semibold text-slate-900">Adaugă agent de vânzări</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Creezi un cont de tip personal (staff) cu rol „Agent vânzări”. Doar
+        Creezi un cont de tip personal (staff) și poți alege rolurile. Doar
         administratorii au acces la această pagină.
       </p>
 
@@ -132,6 +258,73 @@ export default async function AgentNouPage({ searchParams }: PageProps) {
             <p className="text-xs text-slate-500">
               Recomandat: agentul schimbă parola la prima autentificare (pas următor).
             </p>
+          </div>
+
+          {/* Roles section */}
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-slate-600">Roluri</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {roles.length === 0 ? (
+                  <div className="text-xs text-slate-500">Nu există roluri definite în tabela <code className="font-mono">role</code>.</div>
+                ) : (
+                  roles.map((rk) => (
+                    <label key={rk} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        name="roleKey"
+                        value={rk}
+                        defaultChecked={rk === "SALES_REP"}
+                      />
+                      <span className="font-medium">{rk.replaceAll("_", " ")}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                Rolurile sunt opționale. Dacă nu selectezi nimic, noul agent primește automat rolul SALES_REP. Dacă rolul nu există încă în baza de date, îl creăm automat (best-effort).
+              </div>
+            </div>
+          </div>
+
+          {/* New role section (optional) */}
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-slate-600">Rol nou (opțional)</div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="block text-xs font-semibold text-slate-600">Cheie rol (ROLE_KEY)</label>
+              <input
+                name="newRoleKey"
+                placeholder="ex: SERVICE_MANAGER"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[#feab1f]"
+              />
+              <div className="mt-2 text-xs text-slate-500">
+                Dacă completezi, încercăm să creăm rolul în tabela <code className="font-mono">role</code> și îl atribuim automat utilizatorului.
+                Dacă schema DB cere câmpuri suplimentare, crearea poate fi ignorată fără să blocheze crearea utilizatorului.
+              </div>
+            </div>
+          </div>
+
+          {/* Permissions section */}
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-slate-600">Permisiuni (opțional)</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              {!hasPermTables ? (
+                <div className="text-xs text-slate-500">
+                  Modulul de permisiuni nu este activ (lipsește tabela <code className="font-mono">permission</code> sau <code className="font-mono">user_permission</code>). Poți seta doar roluri.
+                </div>
+              ) : permissions.length === 0 ? (
+                <div className="text-xs text-slate-500">Nu există permisiuni definite în tabela <code className="font-mono">permission</code>.</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {permissions.map((pk) => (
+                    <label key={pk} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="checkbox" name="permissionKey" value={pk} />
+                      <span className="font-medium">{pk.replaceAll("_", " ")}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {error ? (

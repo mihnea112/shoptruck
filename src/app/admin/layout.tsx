@@ -545,7 +545,7 @@ export default async function AdminLayout({
           <div className="border-t border-slate-200 px-4 py-4">
             <div className="text-xs font-semibold text-slate-700">Autentificat ca</div>
             <div className="mt-1 truncate text-sm text-slate-900">{user.email}</div>
-            <form action="/api/auth/logout" method="post" className="mt-3">
+            <form action="/api/auth/logout?next=/" method="post" className="mt-3">
               <button
                 type="submit"
                 className="w-full rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -571,7 +571,7 @@ export default async function AdminLayout({
 
               <div className="flex items-center gap-3 text-xs">
                 <span className="hidden text-slate-500 sm:inline">{user.email}</span>
-                <form action="/api/auth/logout" method="post" className="md:hidden">
+                <form action="/api/auth/logout?next=/" method="post" className="md:hidden">
                   <button
                     type="submit"
                     className="rounded-full border border-slate-300 px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"

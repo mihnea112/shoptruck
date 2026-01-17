@@ -143,6 +143,32 @@ export default function EditOfferPage({
   const [notes, setNotes] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
+  // TVA: include for INDIVIDUAL, exclude for COMPANY
+  const isIndividualKind = (k: any) => {
+    const v = String(k ?? "").toLowerCase();
+    return (
+      v === "individual" ||
+      v === "person" ||
+      v === "private" ||
+      v === "ind" ||
+      v === "pf"
+    );
+  };
+
+  const isCompanyKind = (k: any) => {
+    const v = String(k ?? "").toLowerCase();
+    return v === "company" || v === "business" || v === "srl" || v === "sr";
+  };
+
+  // Default to including TVA if kind is missing/unknown
+  const includeVat = (() => {
+    const k = (customer as any)?.kind;
+    if (!k) return true;
+    if (isCompanyKind(k)) return false;
+    if (isIndividualKind(k)) return true;
+    return true;
+  })();
+
   // ÎNCĂRCARE DATE
   useEffect(() => {
     async function loadData() {
@@ -218,12 +244,18 @@ export default function EditOfferPage({
     (acc, i) => acc + Number(i.qty || 0) * Number(i.price || 0),
     0
   );
-  const totalTax = items.reduce(
-    (acc, i) =>
-      acc +
-      Number(i.qty || 0) * Number(i.price || 0) * (Number(i.tax || 0) / 100),
-    0
-  );
+
+  const totalTax = includeVat
+    ? items.reduce(
+        (acc, i) =>
+          acc +
+          Number(i.qty || 0) *
+            Number(i.price || 0) *
+            (Number(i.tax || 0) / 100),
+        0
+      )
+    : 0;
+
   const totalGross = totalNet + totalTax;
 
   // ACTIUNI TABEL
@@ -324,7 +356,7 @@ export default function EditOfferPage({
         name: i.name,
         qty: Number(i.qty) || 1,
         price: Number(i.price) || 0,
-        tax: Number(i.tax) || 0,
+        tax: includeVat ? Number(i.tax) || 0 : 0,
       }));
 
       // 2. Construim payload-ul
@@ -533,7 +565,9 @@ export default function EditOfferPage({
               <th className={`${tableHeader} w-24 text-center`}>Cant.</th>
               <th className={`${tableHeader} w-32 text-right`}>Preț</th>
               <th className={`${tableHeader} w-24 text-center`}>TVA %</th>
-              <th className={`${tableHeader} w-32 text-right`}>Total Brut</th>
+              <th className={`${tableHeader} w-32 text-right`}>
+                {includeVat ? "Total Brut" : "Total"}
+              </th>
               <th className={`${tableHeader} w-10`}></th>
             </tr>
           </thead>
@@ -543,7 +577,7 @@ export default function EditOfferPage({
               const rowQty = Number(item.qty) || 0;
               const rowPrice = Number(item.price) || 0;
               const rowTax = Number(item.tax) || 0;
-              const rowTotal = rowQty * rowPrice * (1 + rowTax / 100);
+              const rowTotal = rowQty * rowPrice * (includeVat ? 1 + rowTax / 100 : 1);
 
               return (
                 <tr
@@ -605,7 +639,7 @@ export default function EditOfferPage({
                     })()}
                   </td>
                   <td className="px-4 py-2 border-t border-slate-200 text-center text-slate-500">
-                    {rowTax}%
+                    {includeVat ? rowTax : 0}%
                   </td>
                   <td className="px-4 py-2 text-right font-semibold border-t border-slate-200">
                     {rowTotal.toFixed(2)}
@@ -665,9 +699,17 @@ export default function EditOfferPage({
               <span>Total Net:</span>
               <span>{totalNet.toFixed(2)} RON</span>
             </div>
+
+            <div className="flex justify-between text-sm text-slate-600">
+              <span>TVA:</span>
+              <span className={includeVat ? "text-emerald-700" : "text-slate-500"}>
+                {includeVat ? "Inclus" : "Exclus"}
+              </span>
+            </div>
+
             <div className="flex justify-between text-sm text-slate-600">
               <span>Total TVA:</span>
-              <span>{totalTax.toFixed(2)} RON</span>
+              <span>{(includeVat ? totalTax : 0).toFixed(2)} RON</span>
             </div>
           </div>
           <div className="flex justify-between items-end mb-6">

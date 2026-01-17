@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth/api";
+import { requireAdmin, requireStaff } from "@/lib/auth/api";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -84,78 +84,93 @@ function parseEquivalentCodes(body: any): string[] {
 }
 
 export async function GET(req: Request) {
-  await requireAdmin(req);
+  try {
+    // Allow read access for ADMIN and SALES_REP
+    await requireStaff(req, ["ADMIN", "SALES_REP"]);
 
-  const { searchParams } = new URL(req.url);
-  const q = (searchParams.get("q") || "").trim();
+    const { searchParams } = new URL(req.url);
+    const q = (searchParams.get("q") || "").trim();
 
-  // convert empty string to null so ::uuid never sees ""
-  const categoryIdRaw = (searchParams.get("categoryId") || "").trim();
-  const categoryId = categoryIdRaw ? categoryIdRaw : null;
+    // convert empty string to null so ::uuid never sees ""
+    const categoryIdRaw = (searchParams.get("categoryId") || "").trim();
+    const categoryId = categoryIdRaw ? categoryIdRaw : null;
 
-  const brandIdRaw = (searchParams.get("brandId") || "").trim();
-  const brandId = brandIdRaw ? brandIdRaw : null;
+    const brandIdRaw = (searchParams.get("brandId") || "").trim();
+    const brandId = brandIdRaw ? brandIdRaw : null;
 
-  const limit = Math.min(Math.max(Number(searchParams.get("limit") || 50), 1), 200);
-  const offset = Math.max(Number(searchParams.get("offset") || 0), 0);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit") || 50), 1),
+      200
+    );
+    const offset = Math.max(Number(searchParams.get("offset") || 0), 0);
 
-  const rows = await sql`
-    SELECT
-      p.id,
-      p.sku,
-      p.slug,
-      p.name,
-      p.buy_price_net,
-      p.profit_margin_pct,
-      p.is_active,
-      p.brand_id,
-      p.category_id,
-      p.tax_rate_id,
-      p.uom,
-      COALESCE(b.name, '') AS brand_name,
-      COALESCE(c.name, '') AS category_name,
-      (
-        p.buy_price_net *
-        (1 + (p.profit_margin_pct / 100.0)) *
-        (1 + COALESCE(tr.rate, 0))
-      )::numeric(12,2) AS price_gross,
-      pc_primary.code_norm AS primary_code,
-      COALESCE(pc_stats.equivalents_count, 0)::int AS equivalents_count
-    FROM product p
-    LEFT JOIN brand b ON b.id = p.brand_id
-    LEFT JOIN category c ON c.id = p.category_id
-    LEFT JOIN tax_rate tr ON tr.id = p.tax_rate_id
-    LEFT JOIN LATERAL (
-      SELECT pc.code_norm
-      FROM product_code j
-      JOIN part_code pc ON pc.id = j.code_id
-      WHERE j.product_id = p.id AND j.is_primary = true
-      LIMIT 1
-    ) pc_primary ON true
-    LEFT JOIN LATERAL (
-      SELECT COUNT(*) AS equivalents_count
-      FROM product_code j
-      WHERE j.product_id = p.id AND j.is_primary = false
-    ) pc_stats ON true
-    WHERE
-      (${q} = '' OR p.name ILIKE '%' || ${q} || '%' OR p.sku ILIKE '%' || ${q} || '%' OR p.slug ILIKE '%' || ${q} || '%')
-      AND (
-        ${categoryId}::uuid IS NULL
-        OR p.category_id = ${categoryId}::uuid
-      )
-      AND (
-        ${brandId}::uuid IS NULL
-        OR p.brand_id = ${brandId}::uuid
-      )
-    ORDER BY p.created_at DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `;
+    const rows = await sql`
+      SELECT
+        p.id,
+        p.sku,
+        p.slug,
+        p.name,
+        p.buy_price_net,
+        p.profit_margin_pct,
+        p.is_active,
+        p.brand_id,
+        p.category_id,
+        p.tax_rate_id,
+        p.uom,
+        COALESCE(b.name, '') AS brand_name,
+        COALESCE(c.name, '') AS category_name,
+        (
+          p.buy_price_net *
+          (1 + (p.profit_margin_pct / 100.0)) *
+          (1 + COALESCE(tr.rate, 0))
+        )::numeric(12,2) AS price_gross,
+        pc_primary.code_norm AS primary_code,
+        COALESCE(pc_stats.equivalents_count, 0)::int AS equivalents_count
+      FROM product p
+      LEFT JOIN brand b ON b.id = p.brand_id
+      LEFT JOIN category c ON c.id = p.category_id
+      LEFT JOIN tax_rate tr ON tr.id = p.tax_rate_id
+      LEFT JOIN LATERAL (
+        SELECT pc.code_norm
+        FROM product_code j
+        JOIN part_code pc ON pc.id = j.code_id
+        WHERE j.product_id = p.id AND j.is_primary = true
+        LIMIT 1
+      ) pc_primary ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS equivalents_count
+        FROM product_code j
+        WHERE j.product_id = p.id AND j.is_primary = false
+      ) pc_stats ON true
+      WHERE
+        (${q} = '' OR p.name ILIKE '%' || ${q} || '%' OR p.sku ILIKE '%' || ${q} || '%' OR p.slug ILIKE '%' || ${q} || '%')
+        AND (
+          ${categoryId}::uuid IS NULL
+          OR p.category_id = ${categoryId}::uuid
+        )
+        AND (
+          ${brandId}::uuid IS NULL
+          OR p.brand_id = ${brandId}::uuid
+        )
+      ORDER BY p.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
 
-  return json({ ok: true, items: rows, limit, offset });
+    return json({ ok: true, items: rows, limit, offset });
+  } catch (e: any) {
+    const status = Number(e?.status ?? e?.statusCode ?? 500);
+    const msg = e?.message || "Eroare internă.";
+    return json({ ok: false, error: msg }, status >= 400 && status <= 599 ? status : 500);
+  }
 }
 
 export async function POST(req: Request) {
-  await requireAdmin(req);
+  try {
+    await requireAdmin(req);
+  } catch (e: any) {
+    const status = Number(e?.status ?? e?.statusCode ?? 403);
+    return json({ ok: false, error: e?.message || "Acces interzis." }, status);
+  }
 
   const ct = req.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {

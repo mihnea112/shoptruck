@@ -1,11 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { sql } from "@/lib/db";
-import { hashToken } from "@/lib/auth/crypto";
-
-function json(data: any, status = 200) {
-  return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
-}
 
 function sameOriginCheck(req: Request) {
   if (process.env.NODE_ENV !== "production") return true;
@@ -23,11 +18,54 @@ function sameOriginCheck(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
-  if (!sameOriginCheck(req)) {
-    return json({ ok: false, error: "Cerere respinsă (origine invalidă)." }, 403);
+function safeNext(req: Request) {
+  // allow only relative paths to prevent open redirects
+  try {
+    const url = new URL(req.url);
+    const next = (url.searchParams.get("next") || "/").trim();
+    if (!next.startsWith("/")) return "/";
+    // prevent protocol-relative (//evil.com)
+    if (next.startsWith("//")) return "/";
+    return next;
+  } catch {
+    return "/";
   }
+}
 
+function htmlLogoutRedirect(nextPath: string) {
+  const body = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Logging out…</title>
+  <meta http-equiv="cache-control" content="no-store" />
+  <meta http-equiv="refresh" content="0;url=${nextPath}" />
+</head>
+<body>
+  <script>
+    try { localStorage.clear(); } catch (e) {}
+    try { sessionStorage.clear(); } catch (e) {}
+    // in case your app stores extra keys under specific names, add them here
+    window.location.replace(${JSON.stringify(nextPath)});
+  </script>
+  <noscript>
+    <p>Logging out… <a href="${nextPath}">Continue</a></p>
+  </noscript>
+</body>
+</html>`;
+
+  return new NextResponse(body, {
+    status: 303,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "location": nextPath,
+    },
+  });
+}
+
+async function performLogout() {
   const c = await cookies();
   const token = c.get("session")?.value || "";
 
@@ -40,10 +78,34 @@ export async function POST(req: Request) {
     expires: new Date(0),
   });
 
+  // Best-effort DB cleanup
   if (token) {
-    const tokenHash = hashToken(token);
-    await sql`DELETE FROM session WHERE token_hash = ${tokenHash}`;
+    try {
+      // If your DB stores a hashed token, adapt this to your hashing strategy.
+      // For now we delete by token_hash assuming it matches the cookie value.
+      await sql`DELETE FROM session WHERE token_hash = ${token}`;
+    } catch (err) {
+      console.error("[auth/logout] failed to delete session", err);
+    }
+  }
+}
+
+// If the user clicks a link to /api/auth/logout in the browser, redirect instead of showing JSON.
+export async function GET(req: NextRequest) {
+  await performLogout();
+  const nextPath = safeNext(req);
+  return htmlLogoutRedirect(nextPath);
+}
+
+export async function POST(req: Request) {
+  if (!sameOriginCheck(req)) {
+    return new NextResponse("Forbidden", {
+      status: 403,
+      headers: { "cache-control": "no-store" },
+    });
   }
 
-  return json({ ok: true, redirectTo: "/login" });
+  await performLogout();
+  const nextPath = safeNext(req);
+  return htmlLogoutRedirect(nextPath);
 }

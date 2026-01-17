@@ -121,6 +121,20 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Bulk selection (admin only)
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkBrandId, setBulkBrandId] = useState<string>("");
+  const [bulkCategoryId, setBulkCategoryId] = useState<string>("");
+  const [bulkMarginPct, setBulkMarginPct] = useState<string>("");
+
+  const visibleIds = useMemo(() => items.map((p) => p.id), [items]);
+  const allVisibleSelected = useMemo(() => {
+    if (!isAdmin) return false;
+    if (visibleIds.length === 0) return false;
+    const sel = new Set(selectedIds);
+    return visibleIds.every((id) => sel.has(id));
+  }, [isAdmin, visibleIds, selectedIds]);
+
   const [q, setQ] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [brandFilterId, setBrandFilterId] = useState<string>("");
@@ -136,9 +150,6 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
-
-  // Calculated selling price (gross)
-  // (no priceGross state)
 
   // NEW: buy + margin
   const [buyPriceNet, setBuyPriceNet] = useState("");
@@ -195,7 +206,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
     return {
       sellNet: round2(sellNetRaw),
-      sellGross: ceilToLeu(sellGrossRaw), // <-- FIX: 148.75 -> 149
+      sellGross: ceilToLeu(sellGrossRaw),
       sellGrossRaw: round2(sellGrossRaw),
     };
   }, [buyPriceNet, marginPct, selectedTax]);
@@ -250,6 +261,13 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // keep selection only for visible products (after filtering/reload)
+  useEffect(() => {
+    if (!isAdmin) return;
+    const vis = new Set(items.map((p) => p.id));
+    setSelectedIds((prev) => prev.filter((id) => vis.has(id)));
+  }, [isAdmin, items]);
+
   function resetForm() {
     setSku("");
     setName("");
@@ -301,7 +319,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       setIsActive(!!p.is_active);
 
       setBuyPriceNet(p.buy_price_net == null ? "" : String(p.buy_price_net));
-      setMarginPct(p.profit_margin_pct == null ? "" : String(p.profit_margin_pct));
+      setMarginPct(
+        p.profit_margin_pct == null ? "" : String(p.profit_margin_pct)
+      );
 
       setBrandId(p.brand_id || "");
       setCategoryIdEdit(p.category_id ?? "");
@@ -433,6 +453,76 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
+  // ----------------------------
+  // BULK ACTIONS (admin only)
+  // ----------------------------
+
+  function clearBulkSelection() {
+    setSelectedIds([]);
+    setBulkBrandId("");
+    setBulkCategoryId("");
+    setBulkMarginPct("");
+  }
+
+  async function bulkPatchProducts(patch: any, successMsg: string) {
+    if (!isAdmin) return;
+    if (selectedIds.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await apiJson<{ ok: true; updated: number; ids: string[] }>(
+        `/api/admin/products/bulk`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids: selectedIds, patch }),
+        }
+      );
+
+      const count = Number(res?.updated ?? selectedIds.length);
+      setNotice(`${successMsg} (${count})`);
+      await loadProducts();
+      clearBulkSelection();
+    } catch (e: any) {
+      setError(e?.message || "Eroare la actualizare în masă.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function bulkDeleteProducts() {
+    if (!isAdmin) return;
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(`Sigur vrei să ștergi ${selectedIds.length} produse?`)) return;
+
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await apiJson<{ ok: true; deleted: number; ids: string[] }>(
+        `/api/admin/products/bulk`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids: selectedIds }),
+        }
+      );
+
+      const count = Number(res?.deleted ?? selectedIds.length);
+      setNotice(`Produse șterse. (${count})`);
+      await loadProducts();
+      clearBulkSelection();
+    } catch (e: any) {
+      setError(e?.message || "Eroare la ștergere în masă.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="w-full">
@@ -440,8 +530,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Produse</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Administrare catalog: preț, TVA, brand, coduri, dimensiuni,
-            categorii.
+            Administrare catalog: preț, TVA, brand, coduri, dimensiuni, categorii.
           </p>
         </div>
 
@@ -514,11 +603,148 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           <div className="text-sm font-semibold text-slate-900">
             Listă produse {loading ? "— se încarcă…" : `(${items.length})`}
           </div>
+
+          {isAdmin && selectedIds.length > 0 ? (
+            <div className="text-xs font-semibold text-slate-600">
+              Selectate: {selectedIds.length}
+            </div>
+          ) : null}
         </div>
+
+        {isAdmin && selectedIds.length > 0 ? (
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    Brand (bulk)
+                  </label>
+                  <select
+                    value={bulkBrandId}
+                    onChange={(e) => setBulkBrandId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-[#feab1f]"
+                  >
+                    <option value="">— (nu modifica) —</option>
+                    <option value="__NULL__">— Fără brand —</option>
+                    {brandOptions.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    Categorie (bulk)
+                  </label>
+                  <select
+                    value={bulkCategoryId}
+                    onChange={(e) => setBulkCategoryId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-[#feab1f]"
+                  >
+                    <option value="">— (nu modifica) —</option>
+                    <option value="__NULL__">— Fără categorie —</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    Marjă (%) (bulk)
+                  </label>
+                  <input
+                    value={bulkMarginPct}
+                    onChange={(e) => setBulkMarginPct(e.target.value)}
+                    placeholder="ex: 25"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#feab1f]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    setError(null);
+
+                    const patch: any = {};
+
+                    if (bulkBrandId) {
+                      patch.brand_id = bulkBrandId === "__NULL__" ? null : bulkBrandId;
+                    }
+
+                    if (bulkCategoryId) {
+                      patch.category_id =
+                        bulkCategoryId === "__NULL__" ? null : bulkCategoryId;
+                    }
+
+                    const marginRaw = String(bulkMarginPct ?? "").trim();
+                    if (marginRaw) {
+                      const mar = safeNum(marginRaw);
+                      if (mar == null || mar < 0) {
+                        setError("Marjă (%) invalidă.");
+                        return;
+                      }
+                      patch.profit_margin_pct = mar;
+                    }
+
+                    if (Object.keys(patch).length === 0) {
+                      setError("Selectează cel puțin o modificare pentru bulk.");
+                      return;
+                    }
+
+                    bulkPatchProducts(patch, "Produse actualizate");
+                  }}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                  disabled={
+                    loading ||
+                    (!bulkBrandId && !bulkCategoryId && !String(bulkMarginPct ?? "").trim())
+                  }
+                  type="button"
+                >
+                  Aplică modificări
+                </button>
+
+                <button
+                  onClick={bulkDeleteProducts}
+                  className="rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 transition"
+                  disabled={loading}
+                  type="button"
+                >
+                  Șterge selectate
+                </button>
+
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                  disabled={loading}
+                  type="button"
+                >
+                  Deselectează
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50">
             <tr>
+              {isAdmin ? (
+                <th className="px-4 py-3 font-semibold text-slate-700 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={(e) => setSelectedIds(e.target.checked ? visibleIds : [])}
+                    aria-label="Selectează toate produsele vizibile"
+                  />
+                </th>
+              ) : null}
+
               <th className="px-4 py-3 font-semibold text-slate-700">Produs</th>
               <th className="px-4 py-3 font-semibold text-slate-700">SKU</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Brand</th>
@@ -532,7 +758,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-slate-600" colSpan={8}>
+                <td className="px-4 py-4 text-slate-600" colSpan={isAdmin ? 9 : 8}>
                   Nu există produse.
                 </td>
               </tr>
@@ -549,14 +775,35 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 const gross =
                   taxFrac == null
                     ? null
-                    : ceilToLeu(Number(p.buy_price_net) * (1 + Number(p.profit_margin_pct) / 100) * (1 + taxFrac));
+                    : ceilToLeu(
+                        Number(p.buy_price_net) *
+                          (1 + Number(p.profit_margin_pct) / 100) *
+                          (1 + taxFrac)
+                      );
+
+                const isChecked = isAdmin ? selectedIds.includes(p.id) : false;
 
                 return (
                   <tr key={p.id} className="border-t border-slate-200">
+                    {isAdmin ? (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setSelectedIds((prev) => {
+                              if (checked) return prev.includes(p.id) ? prev : [...prev, p.id];
+                              return prev.filter((x) => x !== p.id);
+                            });
+                          }}
+                          aria-label={`Selectează produsul ${p.name}`}
+                        />
+                      </td>
+                    ) : null}
+
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">
-                        {p.name}
-                      </div>
+                      <div className="font-semibold text-slate-900">{p.name}</div>
                       <div className="text-xs text-slate-500">{p.slug}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{p.sku}</td>
@@ -570,9 +817,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     <td className="px-4 py-3 text-slate-700">
                       {gross == null ? "—" : `${gross} lei`}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {p.is_active ? "Da" : "Nu"}
-                    </td>
+                    <td className="px-4 py-3 text-slate-700">{p.is_active ? "Da" : "Nu"}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
@@ -608,8 +853,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   {editId ? "Editează produs" : "Adaugă produs"}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  Prețul final (cu TVA) este calculat automat: achiziție + marjă
-                  + TVA (rotunjire în sus la leu întreg).
+                  Prețul final (cu TVA) este calculat automat: achiziție + marjă + TVA
+                  (rotunjire în sus la leu întreg).
                 </div>
               </div>
               <button
@@ -623,16 +868,13 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
             <div className="grid gap-5 px-5 py-5 md:grid-cols-2">
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">
-                    Nume
-                  </label>
+                  <label className="text-xs font-semibold text-slate-600">Nume</label>
                   <input
                     value={name}
                     onChange={(e) => {
                       const v = e.target.value;
                       setName(v);
-                      if (!editId && (!slug || slug === slugify(name)))
-                        setSlug(slugify(v));
+                      if (!editId && (!slug || slug === slugify(name))) setSlug(slugify(v));
                     }}
                     className={inputBase}
                   />
@@ -640,30 +882,20 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">
-                      SKU
-                    </label>
-                    <input
-                      value={sku}
-                      onChange={(e) => setSku(e.target.value)}
-                      className={inputBase}
-                    />
+                    <label className="text-xs font-semibold text-slate-600">SKU</label>
+                    <input value={sku} onChange={(e) => setSku(e.target.value)} className={inputBase} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">
-                      Slug
-                    </label>
-                    <input
-                      value={slug}
-                      onChange={(e) => setSlug(e.target.value)}
-                      className={inputBase}
-                    />
+                    <label className="text-xs font-semibold text-slate-600">Slug</label>
+                    <input value={slug} onChange={(e) => setSlug(e.target.value)} className={inputBase} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Achiziție (fără TVA)</label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Achiziție (fără TVA)
+                    </label>
                     <input
                       value={buyPriceNet}
                       onChange={(e) => setBuyPriceNet(e.target.value)}
@@ -703,9 +935,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">
-                      TVA
-                    </label>
+                    <label className="text-xs font-semibold text-slate-600">TVA</label>
                     <select
                       value={taxRateId}
                       onChange={(e) => setTaxRateId(e.target.value)}
@@ -721,14 +951,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">
-                      Brand
-                    </label>
-                    <select
-                      value={brandId}
-                      onChange={(e) => setBrandId(e.target.value)}
-                      className={selectBase}
-                    >
+                    <label className="text-xs font-semibold text-slate-600">Brand</label>
+                    <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className={selectBase}>
                       <option value="">— Fără brand —</option>
                       {brandOptions.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -740,30 +964,17 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">
-                    Descriere
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={4}
-                    className={inputBase}
-                  />
+                  <label className="text-xs font-semibold text-slate-600">Descriere</label>
+                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className={inputBase} />
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
                   Produs activ
                 </label>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">
-                    Categorie
-                  </label>
+                  <label className="text-xs font-semibold text-slate-600">Categorie</label>
                   <select
                     value={categoryIdEdit}
                     onChange={(e) => setCategoryIdEdit(e.target.value)}
@@ -781,9 +992,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">
-                    Cod principal (Piesa)
-                  </label>
+                  <label className="text-xs font-semibold text-slate-600">Cod principal (Piesa)</label>
                   <input
                     value={primaryCode}
                     onChange={(e) => setPrimaryCode(e.target.value)}
@@ -793,24 +1002,18 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-slate-600">
-                    Coduri Echivalente (OE / Cross)
-                  </div>
+                  <div className="text-xs font-semibold text-slate-600">Coduri Echivalente (OE / Cross)</div>
                   <div className="rounded-xl border border-slate-200 p-3">
                     <div className="max-h-40 overflow-y-auto space-y-2 mb-3">
                       {equivCodes.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic">
-                          Niciun cod echivalent.
-                        </p>
+                        <p className="text-xs text-slate-500 italic">Niciun cod echivalent.</p>
                       ) : (
                         equivCodes.map((c, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between border-b border-slate-100 pb-1 last:border-0 last:pb-0"
                           >
-                            <span className="text-xs font-medium text-slate-900">
-                              {c}
-                            </span>
+                            <span className="text-xs font-medium text-slate-900">{c}</span>
                             {isAdmin && (
                               <button
                                 onClick={() => handleRemoveCodeLocal(c)}
@@ -832,8 +1035,6 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                             value={newEquivCode}
                             onChange={(e) => setNewEquivCode(e.target.value)}
                             onKeyDown={(e) => {
-                              // In textarea, Enter should add a new line.
-                              // Use Ctrl+Enter / Cmd+Enter to add the codes.
                               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                                 e.preventDefault();
                                 handleAddCodeLocal();
@@ -860,14 +1061,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">
-                    UM (uom)
-                  </label>
-                  <input
-                    value={uom}
-                    onChange={(e) => setUom(e.target.value)}
-                    className={inputBase}
-                  />
+                  <label className="text-xs font-semibold text-slate-600">UM (uom)</label>
+                  <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
                 </div>
 
                 {error ? (
@@ -894,10 +1089,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   Salvează
                 </button>
               ) : (
-                <button
-                  disabled
-                  className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-500"
-                >
+                <button disabled className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
                   Doar vizualizare
                 </button>
               )}
