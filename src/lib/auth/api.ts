@@ -9,10 +9,25 @@ export class ApiError extends Error {
   }
 }
 
-type StaffRole = "ADMIN" | "SALES_REP" | "ACCOUNTING" | "WAREHOUSE";
+type StaffRole = string;
 
 function normalizeRoles(roles: unknown): string[] {
-  return Array.isArray(roles) ? roles.map(String) : [];
+  if (!roles) return [];
+
+  if (Array.isArray(roles)) {
+    return roles
+      .map((r) => String(r ?? "").trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  if (typeof roles === "string") {
+    return roles
+      .split(/[\s,;|]+/g)
+      .map((r) => r.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 /** Base: require any logged-in user (staff or customer). */
@@ -22,9 +37,9 @@ export async function requireAuth(_req: Request) {
   return { ...user, roles: normalizeRoles((user as any).roles) };
 }
 
-/** Require staff login (any staff role, or even no roles if you want). */
-export async function requireAnyStaff(_req: Request) {
-  const user = await requireAuth(_req);
+/** Require staff login. */
+export async function requireAnyStaff(req: Request) {
+  const user = await requireAuth(req);
   if (user.kind !== "staff") throw new ApiError(403, "Acces interzis.");
   return user;
 }
@@ -32,23 +47,24 @@ export async function requireAnyStaff(_req: Request) {
 /** Require staff with at least one allowed role. */
 export async function requireStaff(
   req: Request,
-  roles: StaffRole[] = ["ADMIN", "SALES_REP"]
+  roles: StaffRole[] = ["admin", "sales_rep"]
 ) {
   const user = await requireAnyStaff(req);
   const r = normalizeRoles((user as any).roles);
-  const ok = roles.length === 0 ? true : roles.some((x) => r.includes(x));
+  const wanted = (roles || []).map((x) => String(x ?? "").trim().toLowerCase()).filter(Boolean);
+  const ok = wanted.length === 0 ? true : wanted.some((x) => r.includes(x));
   if (!ok) throw new ApiError(403, "Acces interzis.");
   return { ...user, roles: r };
 }
 
 /** Require admin-only. */
 export async function requireAdmin(req: Request) {
-  return requireStaff(req, ["ADMIN"]);
+  return requireStaff(req, ["admin"]);
 }
 
-/** Optional: require customer login (portal). */
-export async function requireCustomer(_req: Request) {
-  const user = await requireAuth(_req);
+/** Optional: require customer login. */
+export async function requireCustomer(req: Request) {
+  const user = await requireAuth(req);
   if (user.kind !== "customer") throw new ApiError(403, "Acces interzis.");
   return user;
 }

@@ -22,8 +22,8 @@ export default async function ProdusePage() {
 
   const roles = normalizeRoles((me as any).roles);
 
-  const isAdmin = roles.includes("ADMIN");
-  const canView = isAdmin || roles.includes("SALES_REP");
+  const isAdmin = me.roles.includes("admin");
+  const canView = isAdmin || me.roles.includes("sales_rep");
 
   if (!canView) redirect("/");
 

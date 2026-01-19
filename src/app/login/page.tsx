@@ -2,7 +2,8 @@
 import LoginClient from "./LoginClient";
 
 function safeNext(v: unknown): string | null {
-  const next = typeof v === "string" ? v : null;
+  const raw = Array.isArray(v) ? v[0] : v;
+  const next = typeof raw === "string" ? raw : null;
   if (!next) return null;
   // allow only internal redirects
   if (!next.startsWith("/")) return null;
@@ -11,11 +12,12 @@ function safeNext(v: unknown): string | null {
   return next;
 }
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const initialNext = safeNext(searchParams?.next);
+  const sp = await searchParams;
+  const initialNext = safeNext(sp?.next);
   return <LoginClient initialNext={initialNext} />;
 }

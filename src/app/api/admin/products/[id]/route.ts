@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth/api";
+import { ApiError, requireAdmin } from "@/lib/auth/api";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -72,7 +72,12 @@ function uniqueByNorm(list: Array<{ code_raw: string; code_norm: string }>) {
 }
 
 export async function GET(req: Request, ctx: Ctx) {
-  await requireAdmin(req);
+  try {
+    await requireAdmin(req);
+  } catch (e: any) {
+    const status = Number(e?.status ?? e?.statusCode ?? (e instanceof ApiError ? e.status : 403));
+    return json({ ok: false, error: e?.message || "Acces interzis." }, status);
+  }
   const id = await getId(ctx);
 
   const rows = await sql`
@@ -155,7 +160,12 @@ export async function GET(req: Request, ctx: Ctx) {
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
-  await requireAdmin(req);
+  try {
+    await requireAdmin(req);
+  } catch (e: any) {
+    const status = Number(e?.status ?? e?.statusCode ?? (e instanceof ApiError ? e.status : 403));
+    return json({ ok: false, error: e?.message || "Acces interzis." }, status);
+  }
   const id = await getId(ctx);
 
   const ct = req.headers.get("content-type") || "";
@@ -267,9 +277,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
   ];
 
   const uniq = uniqueByNorm(allNormalized);
-  const code_raws = uniq.map((x) => x.code_raw);
-  const code_norms = uniq.map((x) => x.code_norm);
-  const is_primary_flags = uniq.map((x) => x.code_norm === primaryNorm.code_norm);
+
+  const inputArr = uniq.map((x) => ({
+    code_raw: x.code_raw,
+    code_norm: x.code_norm,
+    is_primary: x.code_norm === primaryNorm.code_norm,
+  }));
+
+  // IMPORTANT: pass JSON as a real json/jsonb parameter (avoid double-encoded strings)
+  // postgres.js exposes sql.json(value). If unavailable, we fall back to a JSON string.
+  const inputJsonb =
+    (sql as any).json ? (sql as any).json(inputArr) : JSON.stringify(inputArr);
 
   try {
     // 1) Update product fields
@@ -306,11 +324,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
       await sql`
         WITH input AS (
           SELECT *
-          FROM unnest(
-            ${code_raws}::text[],
-            ${code_norms}::text[],
-            ${is_primary_flags}::boolean[]
-          ) AS t(code_raw, code_norm, is_primary)
+          FROM jsonb_to_recordset(${inputJsonb}::jsonb)
+            AS t(code_raw text, code_norm text, is_primary boolean)
         ),
         upsert_codes AS (
           INSERT INTO part_code (code_raw, code_norm)
@@ -385,14 +400,42 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     return json({ ok: true, id: okId });
   } catch (e: any) {
+    const status = Number(e?.status ?? e?.statusCode ?? 500);
+
+    // More precise messages for common DB errors
     const msg =
-      e?.code === "23505" ? "SKU sau slug deja există." : "Eroare internă.";
-    return json({ ok: false, error: msg }, 500);
+      e?.code === "23505"
+        ? "SKU sau slug deja există."
+        : e?.code === "23503"
+        ? "Referință invalidă (brand/categorie/TVA)."
+        : e?.code === "22P02"
+        ? "UUID invalid."
+        : e?.message || "Eroare internă.";
+
+    return json(
+      {
+        ok: false,
+        error: msg,
+        // Keep extra detail only for server logs / troubleshooting
+        detail: {
+          code: e?.code ?? null,
+          constraint: e?.constraint ?? null,
+          table: e?.table ?? null,
+          column: e?.column ?? null,
+        },
+      },
+      status >= 400 && status <= 599 ? status : 500
+    );
   }
 }
 
 export async function DELETE(req: Request, ctx: Ctx) {
-  await requireAdmin(req);
+  try {
+    await requireAdmin(req);
+  } catch (e: any) {
+    const status = Number(e?.status ?? e?.statusCode ?? (e instanceof ApiError ? e.status : 403));
+    return json({ ok: false, error: e?.message || "Acces interzis." }, status);
+  }
   const id = await getId(ctx);
 
   try {

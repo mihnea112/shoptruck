@@ -1,6 +1,9 @@
+// src/app/admin/layout.tsx
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getSessionUser, hasAnyRole } from "@/lib/auth/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { sql } from "@/lib/db";
 
 function NavItem({
   href,
@@ -53,7 +56,7 @@ function NavGroup({
 }: {
   title: string;
   defaultOpen?: boolean;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <details className="group" open={defaultOpen}>
@@ -78,11 +81,88 @@ function NavGroup({
         </div>
       </summary>
 
-      <div className="space-y-2 px-3">
-        {children}
-      </div>
+      {children ? <div className="space-y-2 px-3">{children}</div> : null}
     </details>
   );
+}
+
+type AdminSessionUser = {
+  userId: string;
+  email: string;
+  roles: string[];
+  defaultRoute: string | null;
+};
+
+async function getAdminSessionUser(): Promise<AdminSessionUser | null> {
+  const cookieStore = await cookies();
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Fail closed if env missing
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore
+          .getAll()
+          .map((c) => ({ name: c.name, value: c.value }));
+      },
+      // Server Component layout can't set cookies on the response.
+      setAll() {},
+    },
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.id || !user?.email) return null;
+
+  type Row = {
+    user_id: string;
+    email: string;
+    roles: string[] | null;
+    default_route: string | null;
+    is_active: boolean;
+  };
+
+  const rows = (await sql`
+    SELECT
+      p.user_id,
+      p.email,
+      p.roles,
+      p.default_route,
+      p.is_active
+    FROM profile p
+    WHERE p.user_id = ${user.id}::uuid
+    LIMIT 1
+  `) as Row[];
+
+  if (!rows.length) return null;
+  if (!rows[0].is_active) return null;
+
+  const roles = (rows[0].roles ?? [])
+    .map((r) => String(r ?? "").trim())
+    .filter(Boolean)
+    .map((r) => r.toUpperCase());
+
+  const defaultRouteRaw = rows[0].default_route
+    ? String(rows[0].default_route).trim()
+    : null;
+  const defaultRoute = defaultRouteRaw
+    ? defaultRouteRaw.startsWith("/")
+      ? defaultRouteRaw
+      : `/${defaultRouteRaw}`
+    : null;
+
+  return {
+    userId: rows[0].user_id,
+    email: rows[0].email || user.email,
+    roles,
+    defaultRoute,
+  };
 }
 
 export default async function AdminLayout({
@@ -90,20 +170,25 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSessionUser();
+  const user = await getAdminSessionUser();
   if (!user) redirect("/login?next=/admin");
-  if (user.kind !== "staff") redirect("/");
-
-  const ok = hasAnyRole(user, ["ADMIN", "SALES_REP"]);
-  if (!ok) redirect("/");
 
   const isAdmin = user.roles.includes("ADMIN");
 
+  // Where the user should land if they don't have access to /admin
+  const homePath = user.defaultRoute || "/";
+
+  // This layout is for /admin routes only.
+  // Allow access if:
+  // - role ADMIN exists, OR
+  // - their default route points into /admin
+  const canAccessAdmin =
+    isAdmin || homePath === "/admin" || homePath.startsWith("/admin/");
+  if (!canAccessAdmin) redirect(homePath);
+
   const roleLabel = isAdmin
     ? "Administrator"
-    : user.roles.includes("SALES_REP")
-    ? "Agent vânzări"
-    : "Personal";
+    : (user.roles[0] || "PERSONAL").replace(/_/g, " ");
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -543,9 +628,17 @@ export default async function AdminLayout({
           </div>
 
           <div className="border-t border-slate-200 px-4 py-4">
-            <div className="text-xs font-semibold text-slate-700">Autentificat ca</div>
-            <div className="mt-1 truncate text-sm text-slate-900">{user.email}</div>
-            <form action="/api/auth/logout?next=/" method="post" className="mt-3">
+            <div className="text-xs font-semibold text-slate-700">
+              Autentificat ca
+            </div>
+            <div className="mt-1 truncate text-sm text-slate-900">
+              {user.email}
+            </div>
+            <form
+              action="/api/auth/logout?next=/"
+              method="post"
+              className="mt-3"
+            >
               <button
                 type="submit"
                 className="w-full rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -570,8 +663,14 @@ export default async function AdminLayout({
               </div>
 
               <div className="flex items-center gap-3 text-xs">
-                <span className="hidden text-slate-500 sm:inline">{user.email}</span>
-                <form action="/api/auth/logout?next=/" method="post" className="md:hidden">
+                <span className="hidden text-slate-500 sm:inline">
+                  {user.email}
+                </span>
+                <form
+                  action="/api/auth/logout?next=/"
+                  method="post"
+                  className="md:hidden"
+                >
                   <button
                     type="submit"
                     className="rounded-full border border-slate-300 px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"

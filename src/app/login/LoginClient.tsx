@@ -14,34 +14,45 @@ export default function LoginClient({ initialNext }: { initialNext: string | nul
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+ async function onSubmit(e: React.FormEvent) {
+  e.preventDefault();
+  setError(null);
+  setLoading(true);
 
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, mode: "cookie" }),
-      });
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      redirect: "manual", // IMPORTANT: allow us to read Location for 302/303
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ email, password, mode: "cookie", next: initialNext }),
+    });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data?.ok) {
-        setError(data?.error ?? "Autentificare eșuată. Verifică datele și încearcă din nou.");
-        return;
-      }
-
-      const redirectTo = initialNext ?? data.redirectTo ?? "/";
-      router.push(redirectTo);
+    // If the API returns a redirect (recommended for auth flows)
+    if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
+      const loc = res.headers.get("location") || "/";
+      router.replace(loc);
       router.refresh();
-    } catch {
-      setError("A apărut o eroare la conectare. Încearcă din nou.");
-    } finally {
-      setLoading(false);
+      return;
     }
+
+    // Otherwise expect JSON
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data?.ok) {
+      setError(data?.error ?? "Autentificare eșuată. Verifică datele și încearcă din nou.");
+      return;
+    }
+
+    // Prefer server-decided redirect (DB routing), fallback to initialNext
+    const redirectTo = data.redirectTo ?? initialNext ?? "/";
+    router.replace(redirectTo);
+    router.refresh();
+  } catch {
+    setError("A apărut o eroare la conectare. Încearcă din nou.");
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div className="flex min-h-screen flex-col bg-linear-to-b from-black via-neutral-900 to-neutral-800">

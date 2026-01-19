@@ -86,7 +86,7 @@ function parseEquivalentCodes(body: any): string[] {
 export async function GET(req: Request) {
   try {
     // Allow read access for ADMIN and SALES_REP
-    await requireStaff(req, ["ADMIN", "SALES_REP"]);
+    await requireStaff(req, ["admin", "sales_rep"]);
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
