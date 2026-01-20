@@ -160,13 +160,18 @@ export async function GET(req: Request, ctx: Ctx) {
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
+  let me: any = null;
   try {
-    await requireAdmin(req);
+    me = await requireAdmin(req);
   } catch (e: any) {
-    const status = Number(e?.status ?? e?.statusCode ?? (e instanceof ApiError ? e.status : 403));
+    const status = Number(
+      e?.status ?? e?.statusCode ?? (e instanceof ApiError ? e.status : 403)
+    );
     return json({ ok: false, error: e?.message || "Acces interzis." }, status);
   }
   const id = await getId(ctx);
+
+  const actorId = String(me?.userId ?? me?.user_id ?? me?.id ?? "").trim();
 
   const ct = req.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
@@ -292,6 +297,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
   try {
     // 1) Update product fields
     const upd = await sql`
+      WITH _ctx AS (
+        SELECT set_config('app.user_id', ${actorId}, true)
+      )
       UPDATE product
       SET
         sku = ${sku},
@@ -322,7 +330,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (hasEquivsField) {
       // Full sync: primary + equivalents
       await sql`
-        WITH input AS (
+        WITH _ctx AS (
+          SELECT set_config('app.user_id', ${actorId}, true)
+        ),
+        input AS (
           SELECT *
           FROM jsonb_to_recordset(${inputJsonb}::jsonb)
             AS t(code_raw text, code_norm text, is_primary boolean)
@@ -365,7 +376,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     } else {
       // Primary-only upsert (no deletions)
       await sql`
-        WITH upsert_code AS (
+        WITH _ctx AS (
+          SELECT set_config('app.user_id', ${actorId}, true)
+        ),
+        upsert_code AS (
           INSERT INTO part_code (code_raw, code_norm)
           VALUES (${primaryNorm.code_raw}, ${primaryNorm.code_norm})
           ON CONFLICT (code_norm) DO UPDATE
@@ -385,6 +399,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
       // Ensure no other rows remain marked primary
       await sql`
+        WITH _ctx AS (
+          SELECT set_config('app.user_id', ${actorId}, true)
+        )
         UPDATE product_code
         SET is_primary = false, code_kind = 'EQUIVALENT'
         WHERE product_id = ${okId}::uuid
@@ -400,6 +417,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     return json({ ok: true, id: okId });
   } catch (e: any) {
+    console.error("/api/admin/products/[id] PATCH failed", {
+      productId: id,
+      actorId,
+      code: e?.code ?? null,
+      message: e?.message ?? null,
+      detail: e?.detail ?? null,
+      hint: e?.hint ?? null,
+      position: e?.position ?? null,
+      constraint: e?.constraint ?? null,
+      table: e?.table ?? null,
+      column: e?.column ?? null,
+    });
     const status = Number(e?.status ?? e?.statusCode ?? 500);
 
     // More precise messages for common DB errors

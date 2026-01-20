@@ -9,6 +9,38 @@ function json(data: any, status = 200) {
   });
 }
 
+function errPayload(err: any) {
+  // ApiError from requireStaff / auth layer
+  const status = Number(err?.status ?? err?.statusCode ?? 500);
+
+  // Postgres errors usually expose: code, detail, hint
+  const code = err?.code;
+  const detail = err?.detail;
+  const hint = err?.hint;
+
+  const message = String(err?.message || "Eroare internă.");
+
+  // In dev, expose more diagnostics.
+  const isDev = process.env.NODE_ENV !== "production";
+  return {
+    status: status >= 400 && status <= 599 ? status : 500,
+    body: {
+      ok: false,
+      error: message,
+      ...(isDev
+        ? {
+            debug: {
+              code,
+              detail,
+              hint,
+              stack: err?.stack,
+            },
+          }
+        : {}),
+    },
+  };
+}
+
 type OfferRow = {
   id: string;
   status: string;
@@ -17,6 +49,10 @@ type OfferRow = {
   total_net: string | number;
   total_tax: string | number;
   total_gross: string | number;
+
+  created_by_user_id: string | null;
+  created_by_email: string | null;
+  created_by_full_name: string | null;
 
   account_id: string;
   account_kind: "COMPANY" | "INDIVIDUAL";
@@ -30,9 +66,9 @@ type OfferRow = {
 
 // 1) LIST OFFERS (GET)
 export async function GET(req: NextRequest) {
-  await requireStaff(req, ["ADMIN", "SALES_REP"]);
-
   try {
+    await requireStaff(req, ["ADMIN", "SALES_REP"]);
+
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") || "").trim();
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 50), 1), 200);
@@ -48,6 +84,7 @@ export async function GET(req: NextRequest) {
         o.total_net,
         o.total_tax,
         o.total_gross,
+        o.created_by_user_id,
 
         a.id AS account_id,
         a.kind AS account_kind,
@@ -56,10 +93,14 @@ export async function GET(req: NextRequest) {
         v.id AS vehicle_id,
         v.plate_no,
         v.make,
-        v.model
+        v.model,
+
+        p_created.email AS created_by_email,
+        p_created.full_name AS created_by_full_name
       FROM offer o
       JOIN account a ON a.id = o.account_id
       LEFT JOIN vehicle v ON v.id = o.vehicle_id
+      LEFT JOIN profile p_created ON p_created.user_id = o.created_by_user_id
       WHERE (
         ${q} = ''
         OR a.display_name ILIKE '%' || ${q} || '%'
@@ -80,6 +121,13 @@ export async function GET(req: NextRequest) {
       total_net: Number(o.total_net ?? 0),
       total_tax: Number(o.total_tax ?? 0),
       total_gross: Number(o.total_gross ?? 0),
+      created_by: o.created_by_user_id
+        ? {
+            user_id: o.created_by_user_id,
+            email: o.created_by_email,
+            full_name: o.created_by_full_name,
+          }
+        : null,
       account: {
         id: o.account_id,
         kind: o.account_kind,
@@ -99,7 +147,10 @@ export async function GET(req: NextRequest) {
 
     return json({ ok: true, items: offers });
   } catch (err: any) {
-    return json({ ok: false, error: err?.message || "Eroare internă." }, 500);
+    // Ensure we never lose the real root cause in server logs
+    console.error("/api/admin/offers GET failed", err);
+    const p = errPayload(err);
+    return json(p.body, p.status);
   }
 }
 
@@ -113,7 +164,14 @@ export async function GET(req: NextRequest) {
 //   "validUntil": "2026-02-01"
 // }
 export async function POST(req: NextRequest) {
-  const user = await requireStaff(req, ["ADMIN", "SALES_REP"]);
+  let user: Awaited<ReturnType<typeof requireStaff>>;
+  try {
+    user = await requireStaff(req, ["ADMIN", "SALES_REP"]);
+  } catch (err: any) {
+    console.error("/api/admin/offers POST auth failed", err);
+    const p = errPayload(err);
+    return json(p.body, p.status);
+  }
 
   const ct = req.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
@@ -292,6 +350,8 @@ export async function POST(req: NextRequest) {
 
     return json({ ok: true, id: offerId });
   } catch (err: any) {
-    return json({ ok: false, error: err?.message || "Eroare internă." }, 500);
+    console.error("/api/admin/offers POST failed", err);
+    const p = errPayload(err);
+    return json(p.body, p.status);
   }
 }

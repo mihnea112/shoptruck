@@ -40,12 +40,18 @@ type Product = {
 
   brand_name?: string | null;
   category_name?: string | null;
+
+  // Optional audit fields (from API)
+  created_by_email?: string | null;
+  created_by_name?: string | null;
 };
 
 type ProductDetails = Product & {
   description: string | null;
   primary_code: string | null;
   equivalent_codes: string[];
+  created_by_email?: string | null;
+  created_by_name?: string | null;
 };
 
 type ApiList<T> = { ok: true; items: T[]; limit?: number; offset?: number };
@@ -748,9 +754,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               <th className="px-4 py-3 font-semibold text-slate-700">Produs</th>
               <th className="px-4 py-3 font-semibold text-slate-700">SKU</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Brand</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Achiziție (net)</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Creat de</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Pret Achiziție</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Marjă (%)</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Preț estimat (cu TVA)</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Preț (cu TVA)</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Activ</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Acțiuni</th>
             </tr>
@@ -758,7 +765,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-slate-600" colSpan={isAdmin ? 9 : 8}>
+                <td className="px-4 py-4 text-slate-600" colSpan={isAdmin ? 10 : 9}>
                   Nu există produse.
                 </td>
               </tr>
@@ -809,6 +816,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     <td className="px-4 py-3 text-slate-700">{p.sku}</td>
                     <td className="px-4 py-3 text-slate-700">{brandName}</td>
                     <td className="px-4 py-3 text-slate-700">
+                      {p.created_by_name || p.created_by_email || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
                       {Number(p.buy_price_net || 0).toFixed(2)} lei
                     </td>
                     <td className="px-4 py-3 text-slate-700">
@@ -855,6 +865,11 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 <div className="mt-1 text-xs text-slate-500">
                   Prețul final (cu TVA) este calculat automat: achiziție + marjă + TVA
                   (rotunjire în sus la leu întreg).
+                  {editId ? (
+                    <div className="mt-1">
+                      Creat de: {(items.find((x) => x.id === editId)?.created_by_name || items.find((x) => x.id === editId)?.created_by_email) ?? "—"}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <button

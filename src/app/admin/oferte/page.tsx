@@ -74,15 +74,16 @@ export default function OffersListPage() {
               <th className="px-4 py-3 font-semibold text-slate-700">Client</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Vehicul</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Data</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Creat de</th>
               <th className="px-4 py-3 font-semibold text-slate-700 text-right">Total (RON)</th>
               <th className="px-4 py-3 font-semibold text-slate-700 text-center">Acțiuni</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={5} className="p-4 text-center text-slate-500">Se încarcă...</td></tr>
+              <tr><td colSpan={6} className="p-4 text-center text-slate-500">Se încarcă...</td></tr>
             ) : (offers?.length ?? 0) === 0 ? (
-              <tr><td colSpan={5} className="p-4 text-center text-slate-500">Nu există oferte.</td></tr>
+              <tr><td colSpan={6} className="p-4 text-center text-slate-500">Nu există oferte.</td></tr>
             ) : (
               (offers ?? []).map((o) => (
                 <tr key={o.id} className="hover:bg-slate-50 transition">
@@ -94,6 +95,9 @@ export default function OffersListPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {o?.created_at ? new Date(o.created_at).toLocaleDateString("ro-RO") : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {o?.created_by?.name ?? o?.created_by?.email ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-slate-800">
                     {Number(o?.total_gross ?? 0).toFixed(2)}

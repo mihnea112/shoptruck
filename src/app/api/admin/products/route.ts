@@ -2,6 +2,34 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireAdmin, requireStaff } from "@/lib/auth/api";
 
+function pickPgError(e: any) {
+  return {
+    name: e?.name,
+    code: e?.code,
+    message: e?.message,
+    detail: e?.detail,
+    hint: e?.hint,
+    position: e?.position,
+    where: e?.where,
+    schema: e?.schema,
+    table: e?.table,
+    column: e?.column,
+    constraint: e?.constraint,
+    routine: e?.routine,
+    severity: e?.severity,
+    status: e?.status,
+  };
+}
+
+function debugLog(msg: string, data?: any) {
+  // Keep logs structured and safe (no credentials, no full body dumps)
+  try {
+    console.log(`[${new Date().toISOString()}] [${msg}]`, data ?? "");
+  } catch {
+    // noop
+  }
+}
+
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
     status,
@@ -85,8 +113,10 @@ function parseEquivalentCodes(body: any): string[] {
 
 export async function GET(req: Request) {
   try {
+    debugLog("api/admin/products GET", { url: req.url, method: "GET" });
     // Allow read access for ADMIN and SALES_REP
-    await requireStaff(req, ["admin", "sales_rep"]);
+    const me = await requireStaff(req, ["admin", "sales_rep"]);
+    debugLog("api/admin/products GET auth ok", { user_id: (me as any)?.userId });
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
@@ -104,6 +134,14 @@ export async function GET(req: Request) {
     );
     const offset = Math.max(Number(searchParams.get("offset") || 0), 0);
 
+    debugLog("api/admin/products GET query", {
+      q_len: q.length,
+      has_category: !!categoryId,
+      has_brand: !!brandId,
+      limit,
+      offset,
+    });
+
     const rows = await sql`
       SELECT
         p.id,
@@ -117,6 +155,9 @@ export async function GET(req: Request) {
         p.category_id,
         p.tax_rate_id,
         p.uom,
+        p.created_by_user_id,
+        COALESCE(pr_creator.email, '') AS created_by_email,
+        COALESCE(pr_creator.full_name, '') AS created_by_name,
         COALESCE(b.name, '') AS brand_name,
         COALESCE(c.name, '') AS category_name,
         (
@@ -130,6 +171,7 @@ export async function GET(req: Request) {
       LEFT JOIN brand b ON b.id = p.brand_id
       LEFT JOIN category c ON c.id = p.category_id
       LEFT JOIN tax_rate tr ON tr.id = p.tax_rate_id
+      LEFT JOIN profile pr_creator ON pr_creator.user_id = p.created_by_user_id
       LEFT JOIN LATERAL (
         SELECT pc.code_norm
         FROM product_code j
@@ -155,9 +197,19 @@ export async function GET(req: Request) {
       ORDER BY p.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
+    debugLog("api/admin/products GET ok", {
+      user_id: (me as any)?.userId,
+      count: Array.isArray(rows) ? rows.length : null,
+    });
 
     return json({ ok: true, items: rows, limit, offset });
   } catch (e: any) {
+    debugLog("api/admin/products GET failed", {
+      url: req.url,
+      method: "GET",
+      error: pickPgError(e),
+      stack: e?.stack,
+    });
     const status = Number(e?.status ?? e?.statusCode ?? 500);
     const msg = e?.message || "Eroare internă.";
     return json({ ok: false, error: msg }, status >= 400 && status <= 599 ? status : 500);
@@ -165,9 +217,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let me: any = null;
   try {
-    await requireAdmin(req);
+    me = await requireAdmin(req);
+    debugLog("api/admin/products POST auth ok", { user_id: me?.userId });
   } catch (e: any) {
+    debugLog("api/admin/products POST auth failed", { error: pickPgError(e), stack: e?.stack });
     const status = Number(e?.status ?? e?.statusCode ?? 403);
     return json({ ok: false, error: e?.message || "Acces interzis." }, status);
   }
@@ -203,7 +258,12 @@ export async function POST(req: Request) {
   const uniqCodes = uniqueByNorm(allNormalized);
   const codeRaws = uniqCodes.map((x) => x.code_raw);
   const codeNorms = uniqCodes.map((x) => x.code_norm);
-  const isPrimaryFlags = uniqCodes.map((x) => x.code_norm === primaryNorm?.code_norm);
+
+  // NOTE: We intentionally DO NOT pass a boolean[] into SQL.
+  // Some drivers bind boolean arrays inconsistently and can cause:
+  // "cannot cast type boolean to boolean[]".
+  // Instead, we compute `is_primary` in SQL by comparing `code_norm` to the primary code.
+  const primaryNormValue = primaryNorm?.code_norm ?? null;
 
   const taxRateId = body?.tax_rate_id ? String(body.tax_rate_id).trim() : "";
   const brandId = body?.brand_id ? String(body.brand_id).trim() : null;
@@ -219,6 +279,20 @@ export async function POST(req: Request) {
     ? String(body.category_ids[0] ?? "").trim() || null
     : null;
 
+  debugLog("api/admin/products POST payload", {
+    user_id: me?.userId,
+    sku,
+    slug,
+    name_len: name.length,
+    brand_id: brandId,
+    category_id: categoryIdOne,
+    tax_rate_id: taxRateId,
+    codes_count: uniqCodes.length,
+    has_primary: !!primaryNorm,
+    buy_price_net: buyPriceNet,
+    profit_margin_pct: marginPct,
+  });
+
   if (!sku || sku.length < 2) return json({ ok: false, error: "SKU invalid." }, 400);
   if (!name || name.length < 2) return json({ ok: false, error: "Numele este obligatoriu." }, 400);
   if (!slug) return json({ ok: false, error: "Slug invalid." }, 400);
@@ -233,6 +307,7 @@ export async function POST(req: Request) {
       WITH p AS (
         INSERT INTO product (
           sku, slug, name,
+          created_by_user_id,
           brand_id, tax_rate_id, category_id,
           buy_price_net, profit_margin_pct,
           uom,
@@ -240,6 +315,7 @@ export async function POST(req: Request) {
         )
         VALUES (
           ${sku}, ${slug}, ${name},
+          ${me?.userId ?? null}::uuid,
           ${brandId}::uuid, ${taxRateId}::uuid, ${categoryIdOne}::uuid,
           ${buyPriceNet}, ${marginPct},
           ${uom && uom.trim() ? uom.trim() : 'buc'},
@@ -248,12 +324,14 @@ export async function POST(req: Request) {
         RETURNING id
       ),
       input AS (
-        SELECT *
+        SELECT
+          t.code_raw,
+          t.code_norm,
+          (t.code_norm = ${primaryNormValue}) AS is_primary
         FROM unnest(
           ${codeRaws}::text[],
-          ${codeNorms}::text[],
-          ${isPrimaryFlags}::boolean[]
-        ) AS t(code_raw, code_norm, is_primary)
+          ${codeNorms}::text[]
+        ) AS t(code_raw, code_norm)
       ),
       upsert_codes AS (
         INSERT INTO part_code (code_raw, code_norm)
@@ -284,12 +362,29 @@ export async function POST(req: Request) {
       )
       SELECT (SELECT id FROM p) AS id
     `;
+    debugLog("api/admin/products POST sql ok", { returned_rows: Array.isArray(rows) ? rows.length : null, id: (rows as any[])?.[0]?.id });
 
     const id = (rows as any[])?.[0]?.id;
     if (!id) return json({ ok: false, error: "Eroare la creare produs." }, 500);
 
     return json({ ok: true, id });
   } catch (e: any) {
+    debugLog("api/admin/products POST failed", {
+      user_id: me?.userId,
+      url: req.url,
+      method: "POST",
+      sku,
+      slug,
+      brand_id: brandId,
+      category_id: categoryIdOne,
+      tax_rate_id: taxRateId,
+      codes_count: uniqCodes?.length,
+      has_primary: !!primaryNorm,
+      buy_price_net: buyPriceNet,
+      profit_margin_pct: marginPct,
+      error: pickPgError(e),
+      stack: e?.stack,
+    });
     const msg = e?.code === "23505" ? "SKU sau slug deja există." : "Eroare internă.";
     return json({ ok: false, error: msg }, 500);
   }
