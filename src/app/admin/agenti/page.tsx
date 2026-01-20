@@ -292,9 +292,27 @@ export default async function AgentiPage({ searchParams }: PageProps) {
     ? await sql`SELECT key, COALESCE(name, key) AS name FROM permission ORDER BY key`
     : [];
 
-  const agents = usersRows as { id: string; email: string; roles: string[]; permissions: string[] }[];
-  const allRoles = roleRows as { key: string; name: string }[];
-  const allPerms = permRows as { key: string; name: string }[];
+  type AgentRow = { id: string; email: string; roles: string[]; permissions: string[] };
+  type RoleRow = { key: string; name: string };
+  type PermRow = { key: string; name: string };
+
+  // `sql` returns a RowList<Row[]>; materialize into plain arrays for type-safety.
+  const agents: AgentRow[] = (usersRows ?? []).map((r: any) => ({
+    id: String(r.id),
+    email: String(r.email),
+    roles: Array.isArray(r.roles) ? r.roles.map((x: any) => String(x)) : [],
+    permissions: Array.isArray(r.permissions) ? r.permissions.map((x: any) => String(x)) : [],
+  }));
+
+  const allRoles: RoleRow[] = (roleRows ?? []).map((r: any) => ({
+    key: String(r.key),
+    name: String(r.name),
+  }));
+
+  const allPerms: PermRow[] = (permRows ?? []).map((r: any) => ({
+    key: String(r.key),
+    name: String(r.name),
+  }));
 
   // Promise-safe searchParams
   const sp = await Promise.resolve(searchParams as any);
