@@ -54,6 +54,16 @@ type ProductDetails = Product & {
   created_by_name?: string | null;
 };
 
+type ProductImage = {
+  id: string;
+  product_id: string;
+  storage_path: string;
+  alt: string | null;
+  sort_order: number;
+  is_primary: boolean;
+  created_at: string;
+};
+
 type ApiList<T> = { ok: true; items: T[]; limit?: number; offset?: number };
 type ApiOne<T> = { ok: true; item: T };
 
@@ -111,6 +121,22 @@ function formatPct(rate: string | number) {
   return Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(2)}%`;
 }
 
+// Supabase public storage helper (public bucket)
+const SUPABASE_PUBLIC_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+function publicProductImageUrl(storagePath: string) {
+  if (!SUPABASE_PUBLIC_URL) return "";
+  // bucket name is hardcoded by convention in your API: product-images
+  return `${SUPABASE_PUBLIC_URL}/storage/v1/object/public/product-images/${storagePath}`;
+}
+
+function fileExt(name: string) {
+  const m = String(name || "")
+    .toLowerCase()
+    .match(/\.([a-z0-9]+)$/);
+  const ext = m?.[1] || "jpg";
+  return ext.replace(/[^a-z0-9]/g, "").slice(0, 8) || "jpg";
+}
+
 // Styles
 const inputBase =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#feab1f]";
@@ -125,6 +151,12 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
 
   const [items, setItems] = useState<Product[]>([]);
+
+  // Images state (modal)
+  const [productImages, setProductImages] = useState<ProductImage[]>([]);
+  const [imgBusy, setImgBusy] = useState(false);
+  const [imgError, setImgError] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
 
   // Bulk selection (admin only)
@@ -177,15 +209,15 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
   const categoryOptions = useMemo(
     () => cats.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [cats]
+    [cats],
   );
   const brandOptions = useMemo(
     () => brands.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [brands]
+    [brands],
   );
   const taxOptions = useMemo(
     () => taxRates.slice().sort((a, b) => Number(b.rate) - Number(a.rate)),
-    [taxRates]
+    [taxRates],
   );
 
   const selectedTax = useMemo(() => {
@@ -219,14 +251,14 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
   async function loadCategories() {
     const data = await apiJson<ApiList<Category>>(
-      `/api/admin/categories?q=&limit=500&offset=0`
+      `/api/admin/categories?q=&limit=500&offset=0`,
     );
     setCats(data.items || []);
   }
 
   async function loadBrands() {
     const data = await apiJson<ApiList<Brand>>(
-      `/api/admin/brands?q=&limit=500&offset=0`
+      `/api/admin/brands?q=&limit=500&offset=0`,
     );
     setBrands(data.items || []);
   }
@@ -252,6 +284,127 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       setError(e?.message || "Eroare la încărcare.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ----------------------------
+  // IMAGES
+  // ----------------------------
+
+  async function loadProductImages(productId: string) {
+    if (!productId) return;
+    setImgError(null);
+    try {
+      const data = await apiJson<{ ok: true; items: ProductImage[] }>(
+        `/api/admin/products/${productId}/images`,
+      );
+      setProductImages(data.items || []);
+    } catch (e: any) {
+      setImgError(e?.message || "Eroare la încărcare imagini.");
+    }
+  }
+
+  async function uploadProductFiles(
+    productId: string,
+    files: FileList | File[],
+  ) {
+    if (!productId) {
+      setImgError("Salvează produsul înainte să încarci imagini.");
+      return;
+    }
+    const arr = Array.from(files || []);
+    if (arr.length === 0) return;
+
+    setImgBusy(true);
+    setImgError(null);
+
+    try {
+      for (const f of arr) {
+        const ext = fileExt(f.name);
+
+        // 1) signed upload url
+        const up = await apiJson<{
+          ok: true;
+          signedUrl: string;
+          path: string;
+          token: string;
+        }>(`/api/admin/products/${productId}/images/upload-url`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ext }),
+        });
+
+        // 2) upload to storage
+        const putRes = await fetch(up.signedUrl, {
+          method: "PUT",
+          headers: { "content-type": f.type || "application/octet-stream" },
+          body: f,
+        });
+
+        if (!putRes.ok) {
+          const t = await putRes.text().catch(() => "");
+          throw new Error(`Upload eșuat (${putRes.status}). ${t || ""}`.trim());
+        }
+
+        // 3) register in DB
+        await apiJson(`/api/admin/products/${productId}/images`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            storage_path: up.path,
+            alt: null,
+            sort_order: 0,
+            is_primary: false,
+          }),
+        });
+      }
+
+      await loadProductImages(productId);
+      setNotice("Imagini încărcate.");
+    } catch (e: any) {
+      setImgError(e?.message || "Eroare la încărcare imagini.");
+      setError(e?.message || "Eroare la încărcare imagini.");
+    } finally {
+      setImgBusy(false);
+    }
+  }
+
+  async function setPrimaryImage(productId: string, imageId: string) {
+    if (!productId || !imageId) return;
+    setImgBusy(true);
+    setImgError(null);
+    try {
+      await apiJson(`/api/admin/products/${productId}/images/set-primary`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image_id: imageId }),
+      });
+      await loadProductImages(productId);
+    } catch (e: any) {
+      setImgError(e?.message || "Eroare la setare imagine principală.");
+    } finally {
+      setImgBusy(false);
+    }
+  }
+
+  async function deleteImage(productId: string, imageId: string) {
+    if (!productId || !imageId) return;
+    if (!confirm("Ștergi imaginea?")) return;
+
+    setImgBusy(true);
+    setImgError(null);
+    try {
+      await apiJson(
+        `/api/admin/products/${productId}/images?imageId=${encodeURIComponent(
+          imageId,
+        )}`,
+        { method: "DELETE" },
+      );
+      await loadProductImages(productId);
+    } catch (e: any) {
+      setImgError(e?.message || "Eroare la ștergere imagine.");
+    } finally {
+      setImgBusy(false);
     }
   }
 
@@ -296,11 +449,16 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
     setEquivCodes([]);
     setNewEquivCode("");
+
+    setProductImages([]);
+    setImgError(null);
+    setImgBusy(false);
   }
 
   function openCreate() {
     setEditId(null);
     resetForm();
+    setProductImages([]);
     setNotice(null);
     setError(null);
     setModalOpen(true);
@@ -309,9 +467,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   async function openEdit(id: string) {
     setNotice(null);
     setError(null);
+    setImgError(null);
     try {
       const data = await apiJson<ApiOne<ProductDetails>>(
-        `/api/admin/products/${id}`
+        `/api/admin/products/${id}`,
       );
       const p = data.item;
 
@@ -326,7 +485,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
       setBuyPriceNet(p.buy_price_net == null ? "" : String(p.buy_price_net));
       setMarginPct(
-        p.profit_margin_pct == null ? "" : String(p.profit_margin_pct)
+        p.profit_margin_pct == null ? "" : String(p.profit_margin_pct),
       );
 
       setBrandId(p.brand_id || "");
@@ -338,6 +497,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       setUom(p.uom || "buc");
 
       setModalOpen(true);
+      await loadProductImages(p.id);
     } catch (e: any) {
       setError(e?.message || "Eroare la deschidere produs.");
     }
@@ -367,7 +527,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
         const key = val.toLowerCase();
         if (seen.has(key)) continue;
 
-        // Optional: avoid adding the primary code into equivalents (comment out if you want to allow it)
+        // Optional: avoid adding the primary code into equivalents
         if (primaryCode && key === primaryCode.trim().toLowerCase()) continue;
 
         next.push(val);
@@ -485,7 +645,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ids: selectedIds, patch }),
-        }
+        },
       );
 
       const count = Number(res?.updated ?? selectedIds.length);
@@ -516,7 +676,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           method: "DELETE",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ids: selectedIds }),
-        }
+        },
       );
 
       const count = Number(res?.deleted ?? selectedIds.length);
@@ -536,7 +696,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Produse</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Administrare catalog: preț, TVA, brand, coduri, dimensiuni, categorii.
+            Administrare catalog: preț, TVA, brand, coduri, dimensiuni,
+            categorii.
           </p>
         </div>
 
@@ -680,7 +841,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     const patch: any = {};
 
                     if (bulkBrandId) {
-                      patch.brand_id = bulkBrandId === "__NULL__" ? null : bulkBrandId;
+                      patch.brand_id =
+                        bulkBrandId === "__NULL__" ? null : bulkBrandId;
                     }
 
                     if (bulkCategoryId) {
@@ -699,7 +861,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     }
 
                     if (Object.keys(patch).length === 0) {
-                      setError("Selectează cel puțin o modificare pentru bulk.");
+                      setError(
+                        "Selectează cel puțin o modificare pentru bulk.",
+                      );
                       return;
                     }
 
@@ -708,7 +872,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
                   disabled={
                     loading ||
-                    (!bulkBrandId && !bulkCategoryId && !String(bulkMarginPct ?? "").trim())
+                    (!bulkBrandId &&
+                      !bulkCategoryId &&
+                      !String(bulkMarginPct ?? "").trim())
                   }
                   type="button"
                 >
@@ -745,7 +911,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
-                    onChange={(e) => setSelectedIds(e.target.checked ? visibleIds : [])}
+                    onChange={(e) =>
+                      setSelectedIds(e.target.checked ? visibleIds : [])
+                    }
                     aria-label="Selectează toate produsele vizibile"
                   />
                 </th>
@@ -754,18 +922,31 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               <th className="px-4 py-3 font-semibold text-slate-700">Produs</th>
               <th className="px-4 py-3 font-semibold text-slate-700">SKU</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Brand</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Creat de</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Pret Achiziție</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Marjă (%)</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Preț (cu TVA)</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">
+                Creat de
+              </th>
+              <th className="px-4 py-3 font-semibold text-slate-700">
+                Pret Achiziție
+              </th>
+              <th className="px-4 py-3 font-semibold text-slate-700">
+                Marjă (%)
+              </th>
+              <th className="px-4 py-3 font-semibold text-slate-700">
+                Preț (cu TVA)
+              </th>
               <th className="px-4 py-3 font-semibold text-slate-700">Activ</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Acțiuni</th>
+              <th className="px-4 py-3 font-semibold text-slate-700">
+                Acțiuni
+              </th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-slate-600" colSpan={isAdmin ? 10 : 9}>
+                <td
+                  className="px-4 py-4 text-slate-600"
+                  colSpan={isAdmin ? 10 : 9}
+                >
                   Nu există produse.
                 </td>
               </tr>
@@ -785,7 +966,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     : ceilToLeu(
                         Number(p.buy_price_net) *
                           (1 + Number(p.profit_margin_pct) / 100) *
-                          (1 + taxFrac)
+                          (1 + taxFrac),
                       );
 
                 const isChecked = isAdmin ? selectedIds.includes(p.id) : false;
@@ -800,7 +981,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                           onChange={(e) => {
                             const checked = e.target.checked;
                             setSelectedIds((prev) => {
-                              if (checked) return prev.includes(p.id) ? prev : [...prev, p.id];
+                              if (checked)
+                                return prev.includes(p.id)
+                                  ? prev
+                                  : [...prev, p.id];
                               return prev.filter((x) => x !== p.id);
                             });
                           }}
@@ -810,7 +994,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     ) : null}
 
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{p.name}</div>
+                      <div className="font-semibold text-slate-900">
+                        {p.name}
+                      </div>
                       <div className="text-xs text-slate-500">{p.slug}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{p.sku}</td>
@@ -827,7 +1013,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     <td className="px-4 py-3 text-slate-700">
                       {gross == null ? "—" : `${gross} lei`}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{p.is_active ? "Da" : "Nu"}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {p.is_active ? "Da" : "Nu"}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
@@ -863,11 +1051,14 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   {editId ? "Editează produs" : "Adaugă produs"}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  Prețul final (cu TVA) este calculat automat: achiziție + marjă + TVA
-                  (rotunjire în sus la leu întreg).
+                  Prețul final (cu TVA) este calculat automat: achiziție + marjă
+                  + TVA (rotunjire în sus la leu întreg).
                   {editId ? (
                     <div className="mt-1">
-                      Creat de: {(items.find((x) => x.id === editId)?.created_by_name || items.find((x) => x.id === editId)?.created_by_email) ?? "—"}
+                      Creat de:{" "}
+                      {(items.find((x) => x.id === editId)?.created_by_name ||
+                        items.find((x) => x.id === editId)?.created_by_email) ??
+                        "—"}
                     </div>
                   ) : null}
                 </div>
@@ -883,13 +1074,16 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
             <div className="grid gap-5 px-5 py-5 md:grid-cols-2">
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Nume</label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Nume
+                  </label>
                   <input
                     value={name}
                     onChange={(e) => {
                       const v = e.target.value;
                       setName(v);
-                      if (!editId && (!slug || slug === slugify(name))) setSlug(slugify(v));
+                      if (!editId && (!slug || slug === slugify(name)))
+                        setSlug(slugify(v));
                     }}
                     className={inputBase}
                   />
@@ -897,12 +1091,24 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">SKU</label>
-                    <input value={sku} onChange={(e) => setSku(e.target.value)} className={inputBase} />
+                    <label className="text-xs font-semibold text-slate-600">
+                      SKU
+                    </label>
+                    <input
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      className={inputBase}
+                    />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Slug</label>
-                    <input value={slug} onChange={(e) => setSlug(e.target.value)} className={inputBase} />
+                    <label className="text-xs font-semibold text-slate-600">
+                      Slug
+                    </label>
+                    <input
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      className={inputBase}
+                    />
                   </div>
                 </div>
 
@@ -920,7 +1126,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Marjă (%)</label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Marjă (%)
+                    </label>
                     <input
                       value={marginPct}
                       onChange={(e) => setMarginPct(e.target.value)}
@@ -930,18 +1138,28 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Preț net (vânzare)</label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Preț net (vânzare)
+                    </label>
                     <input
-                      value={preview?.sellNet != null ? String(preview.sellNet) : ""}
+                      value={
+                        preview?.sellNet != null ? String(preview.sellNet) : ""
+                      }
                       readOnly
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Preț final (cu TVA)</label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Preț final (cu TVA)
+                    </label>
                     <input
-                      value={preview?.sellGross != null ? String(preview.sellGross) : ""}
+                      value={
+                        preview?.sellGross != null
+                          ? String(preview.sellGross)
+                          : ""
+                      }
                       readOnly
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     />
@@ -950,7 +1168,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">TVA</label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      TVA
+                    </label>
                     <select
                       value={taxRateId}
                       onChange={(e) => setTaxRateId(e.target.value)}
@@ -966,8 +1186,14 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Brand</label>
-                    <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className={selectBase}>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Brand
+                    </label>
+                    <select
+                      value={brandId}
+                      onChange={(e) => setBrandId(e.target.value)}
+                      className={selectBase}
+                    >
                       <option value="">— Fără brand —</option>
                       {brandOptions.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -979,17 +1205,30 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Descriere</label>
-                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className={inputBase} />
+                  <label className="text-xs font-semibold text-slate-600">
+                    Descriere
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    className={inputBase}
+                  />
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                  />
                   Produs activ
                 </label>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Categorie</label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Categorie
+                  </label>
                   <select
                     value={categoryIdEdit}
                     onChange={(e) => setCategoryIdEdit(e.target.value)}
@@ -1006,8 +1245,130 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               </div>
 
               <div className="space-y-4">
+                {/* Images */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-slate-600">
+                      Imagini produs
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {editId
+                        ? `${productImages.length} imagini`
+                        : "Salvează produsul ca să încarci"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        disabled={!isAdmin || !editId || imgBusy}
+                        onChange={(e) => {
+                          const files = e.currentTarget.files;
+                          if (!files || files.length === 0) return;
+                          uploadProductFiles(editId as string, files);
+                          e.currentTarget.value = "";
+                        }}
+                        className="text-xs"
+                      />
+
+                      {imgBusy ? (
+                        <span className="text-[11px] text-slate-500">
+                          Se procesează…
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {imgError ? (
+                      <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        {imgError}
+                      </div>
+                    ) : null}
+
+                    {productImages.length === 0 ? (
+                      <div className="mt-3 text-xs text-slate-500 italic">
+                        Nicio imagine.
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {productImages.map((img) => {
+                          const url = publicProductImageUrl(img.storage_path);
+                          return (
+                            <div
+                              key={img.id}
+                              className="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                              title={img.storage_path}
+                            >
+                              {url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={url}
+                                  alt={img.alt || ""}
+                                  className="h-28 w-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-28 items-center justify-center text-[11px] text-slate-500">
+                                  Fără URL
+                                </div>
+                              )}
+
+                              <div className="absolute left-2 top-2">
+                                {img.is_primary ? (
+                                  <span className="rounded-full bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white">
+                                    Primary
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white">
+                                    —
+                                  </span>
+                                )}
+                              </div>
+
+                              {isAdmin ? (
+                                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-black/60 p-1 opacity-0 transition group-hover:opacity-100">
+                                  <button
+                                    type="button"
+                                    disabled={imgBusy}
+                                    onClick={() =>
+                                      setPrimaryImage(editId as string, img.id)
+                                    }
+                                    className="rounded bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-900 hover:bg-white"
+                                  >
+                                    Setează
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={imgBusy}
+                                    onClick={() =>
+                                      deleteImage(editId as string, img.id)
+                                    }
+                                    className="rounded bg-red-500/90 px-2 py-1 text-[10px] font-semibold text-white hover:bg-red-500"
+                                  >
+                                    Șterge
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      Bucket: <span className="font-mono">product-images</span>{" "}
+                      (public)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Codes */}
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Cod principal (Piesa)</label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Cod principal (Piesa)
+                  </label>
                   <input
                     value={primaryCode}
                     onChange={(e) => setPrimaryCode(e.target.value)}
@@ -1017,18 +1378,24 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-slate-600">Coduri Echivalente (OE / Cross)</div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Coduri Echivalente (OE / Cross)
+                  </div>
                   <div className="rounded-xl border border-slate-200 p-3">
                     <div className="max-h-40 overflow-y-auto space-y-2 mb-3">
                       {equivCodes.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic">Niciun cod echivalent.</p>
+                        <p className="text-xs text-slate-500 italic">
+                          Niciun cod echivalent.
+                        </p>
                       ) : (
                         equivCodes.map((c, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between border-b border-slate-100 pb-1 last:border-0 last:pb-0"
                           >
-                            <span className="text-xs font-medium text-slate-900">{c}</span>
+                            <span className="text-xs font-medium text-slate-900">
+                              {c}
+                            </span>
                             {isAdmin && (
                               <button
                                 onClick={() => handleRemoveCodeLocal(c)}
@@ -1050,7 +1417,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                             value={newEquivCode}
                             onChange={(e) => setNewEquivCode(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                              if (
+                                e.key === "Enter" &&
+                                (e.ctrlKey || e.metaKey)
+                              ) {
                                 e.preventDefault();
                                 handleAddCodeLocal();
                               }
@@ -1068,7 +1438,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                           </button>
                         </div>
                         <div className="mt-2 text-[11px] text-slate-500">
-                          Poți lipi mai multe coduri (unul pe linie) sau separate prin virgulă / ;.
+                          Poți lipi mai multe coduri (unul pe linie) sau
+                          separate prin virgulă / ;.
                         </div>
                       </>
                     )}
@@ -1076,8 +1447,14 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">UM (uom)</label>
-                  <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
+                  <label className="text-xs font-semibold text-slate-600">
+                    UM (uom)
+                  </label>
+                  <input
+                    value={uom}
+                    onChange={(e) => setUom(e.target.value)}
+                    className={inputBase}
+                  />
                 </div>
 
                 {error ? (
@@ -1104,7 +1481,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   Salvează
                 </button>
               ) : (
-                <button disabled className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
+                <button
+                  disabled
+                  className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-500"
+                >
                   Doar vizualizare
                 </button>
               )}
