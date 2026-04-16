@@ -39,6 +39,8 @@ export async function GET(
       p.buy_price_net,
       p.profit_margin_pct,
       p.is_active,
+      p.stock_on_hand,
+      p.stock_reserved,
       tr.rate AS tax_rate,
 
       b.name AS brand_name,
@@ -91,8 +93,25 @@ export async function GET(
     LIMIT 1
   `;
 
+  const warehouseSql = `
+    SELECT
+      w.id, w.name, w.code,
+      COALESCE(ib.stock_on_hand, 0)  AS stock_on_hand,
+      COALESCE(ib.stock_reserved, 0) AS stock_reserved,
+      GREATEST(0, COALESCE(ib.stock_on_hand,0) - COALESCE(ib.stock_reserved,0)) AS stock_available
+    FROM warehouse w
+    LEFT JOIN inventory_balance ib
+      ON ib.warehouse_id = w.id
+      AND ib.product_id = (SELECT id FROM product WHERE slug = $1 LIMIT 1)
+    WHERE w.is_active = true
+    ORDER BY w.created_at ASC
+  `;
+
   try {
-    const { rows } = await pool.query(sql, [slug]);
+    const [{ rows }, { rows: whRows }] = await Promise.all([
+      pool.query(sql, [slug]),
+      pool.query(warehouseSql, [slug]),
+    ]);
     const r = rows?.[0];
     if (!r) {
       return NextResponse.json(
@@ -147,10 +166,15 @@ export async function GET(
       primary_image_url: toPublicUrl(r.primary_image_path ?? null),
       images,
 
-      in_stock: true, // until you add a stock table/field
+      stock_available: Math.max(
+        0,
+        Number(r.stock_on_hand ?? 0) - Number(r.stock_reserved ?? 0),
+      ),
+      in_stock:
+        Number(r.stock_on_hand ?? 0) - Number(r.stock_reserved ?? 0) > 0,
     };
 
-    return NextResponse.json({ ok: true, item });
+    return NextResponse.json({ ok: true, item, warehouses: whRows });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Failed" },

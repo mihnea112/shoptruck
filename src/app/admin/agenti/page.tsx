@@ -1,498 +1,340 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { sql } from "@/lib/db";
-import { getSessionUser } from "@/lib/auth/server";
+"use client";
 
-type PageProps = {
-  searchParams?:
-    | Promise<{ ok?: string; error?: string }>
-    | { ok?: string; error?: string };
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+
+type Agent = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  roles: string[];
+  is_active: boolean;
+  created_at: string;
 };
 
-async function deleteAgentAction(formData: FormData) {
-  "use server";
+const ALL_ROLES = [
+  { key: "ADMIN", label: "Administrator" },
+  { key: "SALES_REP", label: "Agent Vânzări" },
+  { key: "WAREHOUSE_OP", label: "Operator Depozit" },
+];
 
-  const me = await getSessionUser();
-  if (!me) redirect("/login?next=/admin/agenti");
-  if (me.kind !== "staff" || !me.roles.includes("ADMIN")) redirect("/admin");
-
-  const userId = String(formData.get("userId") ?? "").trim();
-  if (!userId) redirect(`/admin/agenti?error=${encodeURIComponent("Lipsește userId.")}`);
-
-  const meId = String((me as any)?.id ?? (me as any)?.userId ?? "").trim();
-  if (meId && userId === meId) {
-    redirect(`/admin/agenti?error=${encodeURIComponent("Nu îți poți șterge propriul cont.")}`);
-  }
-
-  // IMPORTANT: redirect() must NOT be called inside try/catch (it throws NEXT_REDIRECT).
-  let nextUrl = `/admin/agenti?ok=${encodeURIComponent("Agent șters cu succes.")}`;
-
-  try {
-    const rows = await sql`
-      WITH role_admin AS (SELECT id FROM role WHERE key = 'ADMIN' LIMIT 1),
-      target AS (
-        SELECT u.id
-        FROM app_user u
-        WHERE u.id = ${userId}
-          AND u.kind = 'staff'
-          AND NOT EXISTS (
-            SELECT 1 FROM user_role ur
-            WHERE ur.user_id = u.id AND ur.role_id = (SELECT id FROM role_admin)
-          )
-        LIMIT 1
-      ),
-      del_sessions AS (
-        DELETE FROM session s
-        WHERE s.user_id = (SELECT id FROM target)
-        RETURNING 1
-      ),
-      del_roles AS (
-        DELETE FROM user_role ur
-        WHERE ur.user_id = (SELECT id FROM target)
-        RETURNING 1
-      ),
-      del_user AS (
-        DELETE FROM app_user u
-        WHERE u.id = (SELECT id FROM target)
-        RETURNING u.id
-      )
-      SELECT (SELECT id FROM target)   AS target_id,
-             (SELECT id FROM del_user) AS user_id
-    `;
-
-    const targetId = (rows as any[])?.[0]?.target_id as string | undefined;
-    const deletedId = (rows as any[])?.[0]?.user_id as string | undefined;
-
-    // Idempotent: if target not found, check if already deleted => still success.
-    if (!targetId) {
-      const stillThere = await sql`SELECT 1 FROM app_user WHERE id = ${userId} LIMIT 1`;
-      const exists = Array.isArray(stillThere) && stillThere.length > 0;
-
-      if (exists) {
-        nextUrl = `/admin/agenti?error=${encodeURIComponent(
-          "Agentul nu a fost găsit (sau este administrator)."
-        )}`;
-      }
-    } else if (!deletedId) {
-      nextUrl = `/admin/agenti?error=${encodeURIComponent(
-        "Ștergerea a fost blocată de baza de date."
-      )}`;
-    }
-  } catch (e: any) {
-    const msg =
-      process.env.NODE_ENV !== "production"
-        ? (e?.detail || e?.message || "Eroare la ștergere.")
-        : "Eroare la ștergere.";
-    nextUrl = `/admin/agenti?error=${encodeURIComponent(msg)}`;
-  }
-
-  redirect(nextUrl);
+async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { accept: "application/json", ...(init?.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !(data as any)?.ok)
+    throw new Error((data as any)?.error || "Eroare.");
+  return data as T;
 }
 
-async function updateAgentAccessAction(formData: FormData) {
-  "use server";
-
-  const me = await getSessionUser();
-  if (!me) redirect("/login?next=/admin/agenti");
-  if (me.kind !== "staff" || !me.roles.includes("ADMIN")) redirect("/admin");
-
-  const userId = String(formData.get("userId") ?? "").trim();
-  if (!userId) redirect(`/admin/agenti?error=${encodeURIComponent("Lipsește userId.")}`);
-
-  const roles = (formData.getAll("roles") as string[])
-    .map((x) => String(x).trim())
-    .filter(Boolean);
-
-  const meId = String((me as any)?.id ?? (me as any)?.userId ?? "").trim();
-
-  // Check if permissions tables exist; if not, we ignore permissions completely.
-  const permSupportRows = (await sql`
-    SELECT
-      to_regclass('public.user_permission') AS user_permission_tbl,
-      to_regclass('public.permission') AS permission_tbl
-  `) as any[];
-  const permsSupported = !!(
-    permSupportRows?.[0]?.user_permission_tbl && permSupportRows?.[0]?.permission_tbl
+function RoleBadge({ role }: { role: string }) {
+  const cfg: Record<string, string> = {
+    ADMIN: "bg-red-50 text-red-700 border-red-200",
+    SALES_REP: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    WAREHOUSE_OP: "bg-amber-50 text-amber-700 border-amber-200",
+  };
+  const label: Record<string, string> = {
+    ADMIN: "Admin",
+    SALES_REP: "Agent",
+    WAREHOUSE_OP: "Depozit",
+  };
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cfg[role] ?? "bg-slate-50 text-slate-600 border-slate-200"}`}
+    >
+      {label[role] ?? role}
+    </span>
   );
+}
 
-  const perms = permsSupported
-    ? (formData.getAll("permissions") as string[])
-        .map((x) => String(x).trim())
-        .filter(Boolean)
-    : [];
+function Toast({
+  msg,
+  ok,
+  onDone,
+}: {
+  msg: string;
+  ok: boolean;
+  onDone: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3500);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div
+      className={`fixed bottom-6 right-6 z-50 rounded-2xl px-5 py-3 text-sm font-semibold shadow-xl ${ok ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+    >
+      {msg}
+    </div>
+  );
+}
 
-  // Prevent locking yourself out
-  if (meId && userId === meId && !roles.includes("ADMIN")) {
-    redirect(
-      `/admin/agenti?error=${encodeURIComponent(
-        "Nu îți poți scoate propriul rol ADMIN."
-      )}`
+export default function AgentiPage() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  // Edit state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRoles, setEditRoles] = useState<string[]>([]);
+  const [editActive, setEditActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const showToast = (msg: string, ok: boolean) => setToast({ msg, ok });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiJson<{ ok: true; items: Agent[] }>(
+        "/api/admin/sales-reps",
+      );
+      setAgents(data.items || []);
+    } catch (e: any) {
+      showToast(e?.message || "Eroare la încărcare.", false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function startEdit(a: Agent) {
+    setEditId(a.user_id);
+    setEditName(a.full_name);
+    setEditRoles([...a.roles]);
+    setEditActive(a.is_active);
+  }
+
+  function toggleRole(key: string) {
+    setEditRoles((prev) =>
+      prev.includes(key) ? prev.filter((r) => r !== key) : [...prev, key],
     );
   }
 
-  let nextUrl = `/admin/agenti?ok=${encodeURIComponent("Roluri/permisiuni salvate.")}`;
-
-  try {
-    if (permsSupported) {
-      await sql`
-        WITH target AS (
-          SELECT id
-          FROM app_user
-          WHERE id = ${userId}
-            AND kind = 'staff'
-          LIMIT 1
-        ),
-        del_roles AS (
-          DELETE FROM user_role ur
-          WHERE ur.user_id = (SELECT id FROM target)
-          RETURNING 1
-        ),
-        ins_roles AS (
-          INSERT INTO user_role (user_id, role_id)
-          SELECT (SELECT id FROM target), r.id
-          FROM role r
-          WHERE r.key = ANY(${roles}::text[])
-          ON CONFLICT DO NOTHING
-          RETURNING 1
-        ),
-        del_perms AS (
-          DELETE FROM user_permission up
-          WHERE up.user_id = (SELECT id FROM target)
-          RETURNING 1
-        ),
-        ins_perms AS (
-          INSERT INTO user_permission (user_id, permission_id)
-          SELECT (SELECT id FROM target), p.id
-          FROM permission p
-          WHERE p.key = ANY(${perms}::text[])
-          ON CONFLICT DO NOTHING
-          RETURNING 1
-        )
-        SELECT (SELECT id FROM target) AS target_id
-      `;
-    } else {
-      await sql`
-        WITH target AS (
-          SELECT id
-          FROM app_user
-          WHERE id = ${userId}
-            AND kind = 'staff'
-          LIMIT 1
-        ),
-        del_roles AS (
-          DELETE FROM user_role ur
-          WHERE ur.user_id = (SELECT id FROM target)
-          RETURNING 1
-        ),
-        ins_roles AS (
-          INSERT INTO user_role (user_id, role_id)
-          SELECT (SELECT id FROM target), r.id
-          FROM role r
-          WHERE r.key = ANY(${roles}::text[])
-          ON CONFLICT DO NOTHING
-          RETURNING 1
-        )
-        SELECT (SELECT id FROM target) AS target_id
-      `;
+  async function saveEdit() {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      await apiJson("/api/admin/sales-reps", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          userId: editId,
+          fullName: editName,
+          roles: editRoles,
+          is_active: editActive,
+        }),
+      });
+      showToast("Modificări salvate.", true);
+      setEditId(null);
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || "Eroare.", false);
+    } finally {
+      setSaving(false);
     }
-
-    const stillThere = await sql`SELECT 1 FROM app_user WHERE id = ${userId} AND kind='staff' LIMIT 1`;
-    const exists = Array.isArray(stillThere) && stillThere.length > 0;
-    if (!exists) {
-      nextUrl = `/admin/agenti?error=${encodeURIComponent("Agent inexistent.")}`;
-    }
-  } catch (e: any) {
-    const msg =
-      process.env.NODE_ENV !== "production"
-        ? e?.detail || e?.message || "Eroare la salvare."
-        : "Eroare la salvare.";
-    nextUrl = `/admin/agenti?error=${encodeURIComponent(msg)}`;
   }
 
-  redirect(nextUrl);
-}
-
-export default async function AgentiPage({ searchParams }: PageProps) {
-  const me = await getSessionUser();
-  if (!me) redirect("/login?next=/admin/agenti");
-  if (me.kind !== "staff" || !me.roles.includes("ADMIN")) redirect("/admin");
-
-  const permSupportRows = (await sql`
-    SELECT
-      to_regclass('public.user_permission') AS user_permission_tbl,
-      to_regclass('public.permission') AS permission_tbl
-  `) as any[];
-  const permsSupported = !!(
-    permSupportRows?.[0]?.user_permission_tbl && permSupportRows?.[0]?.permission_tbl
-  );
-
-  const usersRows = permsSupported
-    ? await sql`
-        WITH roles AS (
-          SELECT u.id AS user_id, COALESCE(array_agg(DISTINCT r.key ORDER BY r.key), ARRAY[]::text[]) AS roles
-          FROM app_user u
-          LEFT JOIN user_role ur ON ur.user_id = u.id
-          LEFT JOIN role r ON r.id = ur.role_id
-          WHERE u.kind = 'staff'
-          GROUP BY u.id
-        ),
-        perms AS (
-          SELECT u.id AS user_id, COALESCE(array_agg(DISTINCT p.key ORDER BY p.key), ARRAY[]::text[]) AS permissions
-          FROM app_user u
-          LEFT JOIN user_permission up ON up.user_id = u.id
-          LEFT JOIN permission p ON p.id = up.permission_id
-          WHERE u.kind = 'staff'
-          GROUP BY u.id
-        )
-        SELECT u.id, u.email,
-               COALESCE(r.roles, ARRAY[]::text[]) AS roles,
-               COALESCE(pp.permissions, ARRAY[]::text[]) AS permissions
-        FROM app_user u
-        LEFT JOIN roles r ON r.user_id = u.id
-        LEFT JOIN perms pp ON pp.user_id = u.id
-        WHERE u.kind = 'staff'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM user_role urx
-            JOIN role rx ON rx.id = urx.role_id
-            WHERE urx.user_id = u.id
-              AND rx.key = 'ADMIN'
-          )
-        ORDER BY u.email
-        LIMIT 200
-      `
-    : await sql`
-        WITH roles AS (
-          SELECT u.id AS user_id, COALESCE(array_agg(DISTINCT r.key ORDER BY r.key), ARRAY[]::text[]) AS roles
-          FROM app_user u
-          LEFT JOIN user_role ur ON ur.user_id = u.id
-          LEFT JOIN role r ON r.id = ur.role_id
-          WHERE u.kind = 'staff'
-          GROUP BY u.id
-        )
-        SELECT u.id, u.email,
-               COALESCE(r.roles, ARRAY[]::text[]) AS roles,
-               ARRAY[]::text[] AS permissions
-        FROM app_user u
-        LEFT JOIN roles r ON r.user_id = u.id
-        WHERE u.kind = 'staff'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM user_role urx
-            JOIN role rx ON rx.id = urx.role_id
-            WHERE urx.user_id = u.id
-              AND rx.key = 'ADMIN'
-          )
-        ORDER BY u.email
-        LIMIT 200
-      `;
-
-  const roleRows = await sql`SELECT key, COALESCE(name, key) AS name FROM role ORDER BY key`;
-  const permRows = permsSupported
-    ? await sql`SELECT key, COALESCE(name, key) AS name FROM permission ORDER BY key`
-    : [];
-
-  type AgentRow = { id: string; email: string; roles: string[]; permissions: string[] };
-  type RoleRow = { key: string; name: string };
-  type PermRow = { key: string; name: string };
-
-  // `sql` returns a RowList<Row[]>; materialize into plain arrays for type-safety.
-  const agents: AgentRow[] = (usersRows ?? []).map((r: any) => ({
-    id: String(r.id),
-    email: String(r.email),
-    roles: Array.isArray(r.roles) ? r.roles.map((x: any) => String(x)) : [],
-    permissions: Array.isArray(r.permissions) ? r.permissions.map((x: any) => String(x)) : [],
-  }));
-
-  const allRoles: RoleRow[] = (roleRows ?? []).map((r: any) => ({
-    key: String(r.key),
-    name: String(r.name),
-  }));
-
-  const allPerms: PermRow[] = (permRows ?? []).map((r: any) => ({
-    key: String(r.key),
-    name: String(r.name),
-  }));
-
-  // Promise-safe searchParams
-  const sp = await Promise.resolve(searchParams as any);
-
-  const safeDecode = (v?: string) => {
-    if (!v) return null;
+  async function deleteAgent(userId: string, email: string) {
+    if (
+      !confirm(
+        `Ștergi definitiv contul ${email}? Acțiunea nu poate fi anulată.`,
+      )
+    )
+      return;
     try {
-      return decodeURIComponent(v);
-    } catch {
-      return v;
+      await apiJson("/api/admin/sales-reps", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      showToast("Cont șters.", true);
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || "Eroare.", false);
     }
-  };
-
-  const error = safeDecode(sp?.error);
-  const ok = safeDecode(sp?.ok);
+  }
 
   return (
-    <div>
-      <div className="flex items-end justify-between gap-4">
+    <div className="w-full pb-16">
+      {toast && (
+        <Toast msg={toast.msg} ok={toast.ok} onDone={() => setToast(null)} />
+      )}
+
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">Agenți de vânzări</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Creează și gestionează conturile agenților.
+          <h1 className="text-lg font-bold text-slate-900">
+            Agenți & Personal
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Gestionează conturile de staff și rolurile acestora.
           </p>
         </div>
-
         <Link
           href="/admin/agenti/nou"
-          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
+          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 transition"
         >
-          Adaugă agent
+          + Adaugă agent
         </Link>
       </div>
 
-      {error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
-
-      {ok ? (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {ok}
-        </div>
-      ) : null}
-
-      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-4 py-3 font-semibold text-slate-700">Nume</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Email</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Roluri & permisiuni</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Acțiuni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {agents.length === 0 ? (
-              <tr>
-                <td className="px-4 py-4 text-slate-600" colSpan={4}>
-                  Nu există agenți.
-                </td>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {loading ? (
+          <div className="px-4 py-12 text-center text-sm text-slate-400">
+            Se încarcă…
+          </div>
+        ) : agents.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-slate-400">
+            Niciun agent creat. Apasă „+ Adaugă agent" pentru a începe.
+          </div>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="px-5 py-3 text-xs font-semibold text-slate-500">
+                  Nume
+                </th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500">
+                  Email
+                </th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500">
+                  Roluri
+                </th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 w-28"></th>
               </tr>
-            ) : (
-              agents.map((a) => (
-                <tr key={a.id} className="border-t border-slate-200 align-top">
-                  <td className="px-4 py-3 text-slate-900">
-                    {a.email.split("@")[0] || "—"}
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-700">{a.email}</td>
-
-                  <td className="px-4 py-3">
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-xs font-semibold text-slate-600">Curent</div>
-                        <div className="mt-1 flex flex-wrap gap-1.5">
-                          {(a.roles?.length ? a.roles : ["— fără roluri —"]).map((r, idx) => (
-                            <span
-                              key={`r-${idx}`}
-                              className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
-                            >
-                              {r}
+            </thead>
+            <tbody>
+              {agents.map((a) => {
+                const isEditing = editId === a.user_id;
+                return (
+                  <tr
+                    key={a.user_id}
+                    className="border-t border-slate-100 align-top"
+                  >
+                    <td className="px-5 py-3">
+                      {isEditing ? (
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-[#feab1f]"
+                          placeholder="Nume complet"
+                        />
+                      ) : (
+                        <span className="font-semibold text-slate-900">
+                          {a.full_name || (
+                            <span className="text-slate-400 font-normal">
+                              —
                             </span>
-                          ))}
-                          {(a.permissions?.length ? a.permissions : []).map((p, idx) => (
-                            <span
-                              key={`p-${idx}`}
-                              className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                          )}
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 text-slate-600">{a.email}</td>
+
+                    <td className="px-4 py-3">
+                      {isEditing ? (
+                        <div className="flex flex-col gap-1.5">
+                          {ALL_ROLES.map((r) => (
+                            <label
+                              key={r.key}
+                              className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
                             >
-                              {p}
-                            </span>
+                              <input
+                                type="checkbox"
+                                checked={editRoles.includes(r.key)}
+                                onChange={() => toggleRole(r.key)}
+                                className="h-3.5 w-3.5 accent-slate-900"
+                              />
+                              {r.label}
+                            </label>
                           ))}
                         </div>
-                      </div>
-
-                      <div className="rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="text-xs font-semibold text-slate-700">Setează roluri & permisiuni</div>
-
-                        <form action={updateAgentAccessAction} className="mt-3 space-y-3">
-                          <input type="hidden" name="userId" value={a.id} />
-
-                          <div>
-                            <div className="text-[11px] font-semibold text-slate-600">Roluri</div>
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              {allRoles.map((r) => {
-                                const checked = Array.isArray(a.roles) && a.roles.includes(r.key);
-                                return (
-                                  <label key={r.key} className="flex items-center gap-2 text-xs text-slate-700">
-                                    <input
-                                      type="checkbox"
-                                      name="roles"
-                                      value={r.key}
-                                      defaultChecked={checked}
-                                    />
-                                    <span>{r.name}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          {permsSupported ? (
-                            <div>
-                              <div className="text-[11px] font-semibold text-slate-600">Permisiuni</div>
-                              <div className="mt-2 grid grid-cols-2 gap-2">
-                                {allPerms.map((p) => {
-                                  const checked = Array.isArray(a.permissions) && a.permissions.includes(p.key);
-                                  return (
-                                    <label key={p.key} className="flex items-center gap-2 text-xs text-slate-700">
-                                      <input
-                                        type="checkbox"
-                                        name="permissions"
-                                        value={p.key}
-                                        defaultChecked={checked}
-                                      />
-                                      <span>{p.name}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {(a.roles || []).length > 0 ? (
+                            a.roles.map((r) => <RoleBadge key={r} role={r} />)
                           ) : (
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
-                              Permisiunile nu sunt configurate în DB (lipsește tabelul <span className="font-mono">user_permission</span> sau <span className="font-mono">permission</span>). Se pot seta doar rolurile.
-                            </div>
+                            <span className="text-xs text-slate-400">
+                              fără rol
+                            </span>
                           )}
+                        </div>
+                      )}
+                    </td>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="submit"
-                              className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition"
-                            >
-                              Salvează acces
-                            </button>
-                            <div className="text-[11px] text-slate-500">Salvarea rescrie setările (roluri/permisiuni) pentru acest utilizator.</div>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <form action={deleteAgentAction}>
-                        <input type="hidden" name="userId" value={a.id} />
-                        <button
-                          type="submit"
-                          className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition"
+                    <td className="px-4 py-3">
+                      {isEditing ? (
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editActive}
+                            onChange={(e) => setEditActive(e.target.checked)}
+                            className="h-3.5 w-3.5 accent-slate-900"
+                          />
+                          Activ
+                        </label>
+                      ) : (
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            a.is_active
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
                         >
-                          Șterge
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                          {a.is_active ? "Activ" : "Inactiv"}
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      {isEditing ? (
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={saveEdit}
+                            disabled={saving}
+                            className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {saving ? "…" : "Salvează"}
+                          </button>
+                          <button
+                            onClick={() => setEditId(null)}
+                            className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                          >
+                            Anulează
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => startEdit(a)}
+                            className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                          >
+                            Editează
+                          </button>
+                          <button
+                            onClick={() => deleteAgent(a.user_id, a.email)}
+                            className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 transition"
+                          >
+                            Șterge
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

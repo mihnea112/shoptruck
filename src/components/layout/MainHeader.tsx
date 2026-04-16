@@ -7,6 +7,7 @@ import logo from "./logo.png";
 
 const navItems = [
   { href: "/", label: "Acasă" },
+  { href: "/catalog", label: "Catalog" },
   { href: "/promotii", label: "Promoții" },
   { href: "/blog", label: "Blog" },
   { href: "/contact", label: "Contact" },
@@ -17,14 +18,10 @@ export function MainHeader() {
 
   return (
     <header className="border-b border-slate-200 bg-white backdrop-blur">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5 gap-6">
+      <div className="flex w-full items-center justify-between px-4 sm:px-6 lg:px-8 py-4 gap-6">
         {/* Logo + brand */}
         <Link href="/" className="flex items-center gap-3">
-          <Image
-            src={logo}
-            alt="ShopTruck logo"
-            className="h-10 w-auto"
-          />
+          <Image src={logo} alt="ShopTruck logo" className="h-10 w-auto" />
         </Link>
 
         {/* Nav */}

@@ -155,6 +155,8 @@ export async function GET(req: Request) {
         p.category_id,
         p.tax_rate_id,
         p.uom,
+        p.stock_on_hand,
+        p.stock_reserved,
         p.created_by_user_id,
         COALESCE(pr_creator.email, '') AS created_by_email,
         COALESCE(pr_creator.full_name, '') AS created_by_name,
@@ -270,6 +272,8 @@ export async function POST(req: Request) {
 
   const buyPriceNet = safeNum(body?.buy_price_net);
   const marginPct = safeNum(body?.profit_margin_pct ?? body?.margin_pct) ?? 0;
+  // Manual stock edit (admin can set on-hand; reserved is managed by orders)
+  const stockOnHand = safeNum(body?.stock_on_hand ?? body?.stockOnHand ?? body?.stock);
 
   const uom = body?.uom ? String(body.uom).trim() : null;
 
@@ -291,6 +295,7 @@ export async function POST(req: Request) {
     has_primary: !!primaryNorm,
     buy_price_net: buyPriceNet,
     profit_margin_pct: marginPct,
+    stock_on_hand: stockOnHand,
   });
 
   if (!sku || sku.length < 2) return json({ ok: false, error: "SKU invalid." }, 400);
@@ -300,6 +305,7 @@ export async function POST(req: Request) {
   if (!categoryIdOne) return json({ ok: false, error: "Selectează categorie." }, 400);
   if (!primaryNorm) return json({ ok: false, error: "Codul principal este obligatoriu." }, 400);
   if (buyPriceNet == null || buyPriceNet < 0) return json({ ok: false, error: "Preț achiziție (fără TVA) invalid." }, 400);
+  if (stockOnHand != null && stockOnHand < 0) return json({ ok: false, error: "Stoc invalid (>= 0)." }, 400);
   if (marginPct < 0) return json({ ok: false, error: "Marjă (%) invalidă (>= 0)." }, 400);
 
   try {
@@ -311,6 +317,7 @@ export async function POST(req: Request) {
           brand_id, tax_rate_id, category_id,
           buy_price_net, profit_margin_pct,
           uom,
+          stock_on_hand,
           is_active
         )
         VALUES (
@@ -319,6 +326,7 @@ export async function POST(req: Request) {
           ${brandId}::uuid, ${taxRateId}::uuid, ${categoryIdOne}::uuid,
           ${buyPriceNet}, ${marginPct},
           ${uom && uom.trim() ? uom.trim() : 'buc'},
+          ${stockOnHand == null ? 0 : stockOnHand},
           ${isActive}
         )
         RETURNING id
@@ -382,6 +390,7 @@ export async function POST(req: Request) {
       has_primary: !!primaryNorm,
       buy_price_net: buyPriceNet,
       profit_margin_pct: marginPct,
+      stock_on_hand: stockOnHand,
       error: pickPgError(e),
       stack: e?.stack,
     });

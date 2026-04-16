@@ -174,16 +174,20 @@ export default async function AdminLayout({
   if (!user) redirect("/login?next=/admin");
 
   const isAdmin = user.roles.includes("ADMIN");
+  const isWarehouseOp = user.roles.includes("WAREHOUSE_OP");
 
   // Where the user should land if they don't have access to /admin
   const homePath = user.defaultRoute || "/";
 
   // This layout is for /admin routes only.
   // Allow access if:
-  // - role ADMIN exists, OR
+  // - role ADMIN or WAREHOUSE_OP exists, OR
   // - their default route points into /admin
   const canAccessAdmin =
-    isAdmin || homePath === "/admin" || homePath.startsWith("/admin/");
+    isAdmin ||
+    isWarehouseOp ||
+    homePath === "/admin" ||
+    homePath.startsWith("/admin/");
   if (!canAccessAdmin) redirect(homePath);
 
   const roleLabel = isAdmin
@@ -234,7 +238,7 @@ export default async function AdminLayout({
                 />
 
                 <NavItem
-                  href="/admin/orders"
+                  href="/admin/comenzi"
                   label="Comenzi"
                   description="Vizualizare, procesare, facturare"
                   icon={
@@ -404,7 +408,7 @@ export default async function AdminLayout({
               {isAdmin ? (
                 <NavGroup title="Management" defaultOpen={false}>
                   <NavItem
-                    href="/admin/depozite"
+                    href="/admin/depozit"
                     label="Depozite"
                     description="Gestionare locații"
                     icon={
@@ -571,6 +575,33 @@ export default async function AdminLayout({
                         <path d="M8 8h8" />
                         <path d="M8 12h8" />
                         <path d="M8 16h5" />
+                      </svg>
+                    }
+                  />
+                </NavGroup>
+              ) : null}
+
+              {/* DEPOZIT — visible to warehouse ops and admins */}
+              {isAdmin || isWarehouseOp ? (
+                <NavGroup title="Depozitul meu" defaultOpen={true}>
+                  <NavItem
+                    href="/admin/depozit/stoc"
+                    label="Stoc"
+                    description="Vizualizare și modificare stoc"
+                    icon={
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="h-5 w-5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M21 8l-9-5-9 5 9 5 9-5z" />
+                        <path d="M3 8v8l9 5 9-5V8" />
+                        <path d="M12 13v8" />
                       </svg>
                     }
                   />

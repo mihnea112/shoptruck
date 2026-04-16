@@ -85,7 +85,12 @@ const Icons = {
 };
 
 type OfferItemUI = {
-  id: number;
+  /** local UI key */
+  uiId: number;
+
+  /** offer_item.id from DB (uuid). Null for newly added rows until saved. */
+  offerItemId: string | null;
+
   productId?: string;
   name: string;
   qty: number;
@@ -206,22 +211,25 @@ export default function EditOfferPage({
             const basePrice = Number.isFinite(Number(i.base_price))
               ? Number(i.base_price)
               : Number.isFinite(price)
-              ? price
-              : 0;
+                ? price
+                : 0;
 
             const numericPrice = Number.isFinite(price) ? price : 0;
 
             return {
               ...i,
+              offerItemId: i.id ? String(i.id) : null,
+              uiId: Date.now() + Math.random(),
               price: numericPrice,
               basePrice,
-              priceDraft: Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : "0.00",
+              priceDraft: Number.isFinite(numericPrice)
+                ? numericPrice.toFixed(2)
+                : "0.00",
               priceError: null,
               qty: Number(i.quantity || i.qty),
               tax: Number(i.tax || i.tax_percentage),
-              id: i.id || Date.now() + Math.random(),
             };
-          })
+          }),
         );
 
         setNotes(d.notes || "");
@@ -239,10 +247,24 @@ export default function EditOfferPage({
     loadData();
   }, [offerId, router]);
 
+  // Load warehouses on mount so picker is ready when modal opens
+  useEffect(() => {
+    fetch("/api/admin/warehouses", { headers: { accept: "application/json" } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && Array.isArray(d.items)) {
+          const active = d.items.filter((w: any) => w.is_active);
+          setWarehouses(active);
+          if (active.length > 0) setOrderWarehouseId(active[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // CALCULE
   const totalNet = items.reduce(
     (acc, i) => acc + Number(i.qty || 0) * Number(i.price || 0),
-    0
+    0,
   );
 
   const totalTax = includeVat
@@ -252,7 +274,7 @@ export default function EditOfferPage({
           Number(i.qty || 0) *
             Number(i.price || 0) *
             (Number(i.tax || 0) / 100),
-        0
+        0,
       )
     : 0;
 
@@ -263,7 +285,8 @@ export default function EditOfferPage({
     setItems([
       ...items,
       {
-        id: Date.now(),
+        uiId: Date.now(),
+        offerItemId: null,
         name: "",
         qty: 1,
         price: 0,
@@ -274,15 +297,16 @@ export default function EditOfferPage({
       },
     ]);
 
-  const removeItem = (id: number) => setItems(items.filter((i) => i.id !== id));
+  const removeItem = (uiId: number) =>
+    setItems(items.filter((i) => i.uiId !== uiId));
 
-  const updateQty = (id: number, qty: number) =>
-    setItems(items.map((i) => (i.id === id ? { ...i, qty } : i)));
+  const updateQty = (uiId: number, qty: number) =>
+    setItems(items.map((i) => (i.uiId === uiId ? { ...i, qty } : i)));
 
-  const updatePriceDraft = (id: number, draft: string) => {
+  const updatePriceDraft = (uiId: number, draft: string) => {
     setItems((prev) =>
       prev.map((i) => {
-        if (i.id !== id) return i;
+        if (i.uiId !== uiId) return i;
 
         const d = String(draft ?? "");
         const normalized = d.trim().replace(/\s+/g, "").replace(",", ".");
@@ -304,21 +328,21 @@ export default function EditOfferPage({
           const max = base * 1.5;
           if (parsed < min || parsed > max) {
             err = `Prețul trebuie să fie între ${min.toFixed(2)} și ${max.toFixed(
-              2
+              2,
             )} (bază ${base.toFixed(2)}).`;
           }
         }
 
         // Keep numeric price in sync, but DO NOT clamp/snap
         return { ...i, priceDraft: d, price: parsed, priceError: err };
-      })
+      }),
     );
   };
 
-  const handleProductSelect = (id: number, product: ProductDTO) => {
+  const handleProductSelect = (uiId: number, product: ProductDTO) => {
     setItems(
       items.map((i) =>
-        i.id === id
+        i.uiId === uiId
           ? {
               ...i,
               productId: product.id,
@@ -332,9 +356,95 @@ export default function EditOfferPage({
               priceError: null,
               tax: Number(product.vat_percent),
             }
-          : i
-      )
+          : i,
+      ),
     );
+  };
+  // --- OFFER -> ORDER (UI)
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderSelected, setOrderSelected] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [orderWarehouseId, setOrderWarehouseId] = useState<string>("");
+  const [warehouses, setWarehouses] = useState<
+    { id: string; code: string; name: string }[]
+  >([]);
+
+  const openOrderModal = () => {
+    // default: select all existing offer items that exist in DB
+    const initial: Record<string, boolean> = {};
+    for (const it of items) {
+      if (it.offerItemId) initial[it.offerItemId] = true;
+    }
+    setOrderSelected(initial);
+    setOrderModalOpen(true);
+  };
+
+  const toggleAllOrderItems = (checked: boolean) => {
+    const next: Record<string, boolean> = {};
+    for (const it of items) {
+      if (it.offerItemId) next[it.offerItemId] = checked;
+    }
+    setOrderSelected(next);
+  };
+
+  const createOrderFromOffer = async () => {
+    // Only allow DB-backed offer items
+    const selectable = items.filter((x) => !!x.offerItemId);
+    if (selectable.length === 0) {
+      alert(
+        "Oferta nu are încă rânduri salvate în DB. Salvează oferta înainte.",
+      );
+      return;
+    }
+
+    const itemIds = selectable
+      .map((x) => x.offerItemId as string)
+      .filter((id) => orderSelected[id]);
+
+    if (itemIds.length === 0) {
+      alert("Selectează cel puțin un rând pentru comandă.");
+      return;
+    }
+
+    setCreatingOrder(true);
+    try {
+      const res = await fetch(`/api/admin/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offer_id: offerId,
+          item_ids: itemIds,
+          warehouse_id: orderWarehouseId || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Eroare la crearea comenzii.");
+      }
+
+      const newId =
+        json?.id ||
+        json?.order_id ||
+        json?.data?.id ||
+        json?.data?.order_id ||
+        json?.order?.id;
+      alert("Comanda a fost creată.");
+      setOrderModalOpen(false);
+
+      // Redirect: try common paths
+      if (newId) {
+        router.push(`/admin/comenzi/${newId}`);
+      } else {
+        router.push(`/admin/comenzi`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Eroare la crearea comenzii.");
+    } finally {
+      setCreatingOrder(false);
+    }
   };
 
   // --- LOGICA DE UPDATE (PUT) ---
@@ -343,7 +453,7 @@ export default function EditOfferPage({
     const badPrice = items.find((i) => i.priceError);
     if (badPrice) {
       return alert(
-        "Există rânduri cu preț invalid (în afara intervalului permis sau format greșit)."
+        "Există rânduri cu preț invalid (în afara intervalului permis sau format greșit).",
       );
     }
 
@@ -415,8 +525,14 @@ export default function EditOfferPage({
           </p>
         </div>
 
-        {/* Buton PDF */}
-        <div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openOrderModal}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+            type="button"
+          >
+            Creează comandă
+          </button>
           <OfferDownloadButton offerId={offerId} />
         </div>
       </div>
@@ -557,8 +673,11 @@ export default function EditOfferPage({
       </div>
 
       {/* TABEL PRODUSE */}
-      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <table
+          className="w-full text-left text-sm"
+          style={{ borderCollapse: "separate", borderSpacing: 0 }}
+        >
           <thead className="bg-slate-50">
             <tr>
               <th className={tableHeader}>Produs</th>
@@ -577,16 +696,17 @@ export default function EditOfferPage({
               const rowQty = Number(item.qty) || 0;
               const rowPrice = Number(item.price) || 0;
               const rowTax = Number(item.tax) || 0;
-              const rowTotal = rowQty * rowPrice * (includeVat ? 1 + rowTax / 100 : 1);
+              const rowTotal =
+                rowQty * rowPrice * (includeVat ? 1 + rowTax / 100 : 1);
 
               return (
                 <tr
-                  key={item.id}
+                  key={item.uiId}
                   className="group hover:bg-slate-50 transition-colors"
                 >
                   <td className="px-4 py-2 border-t border-slate-200 relative">
                     <ProductAutocomplete
-                      onSelect={(p) => handleProductSelect(item.id, p)}
+                      onSelect={(p) => handleProductSelect(item.uiId, p)}
                       placeholder={item.name || "Caută produs..."}
                     />
                   </td>
@@ -597,7 +717,7 @@ export default function EditOfferPage({
                       className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-center outline-none"
                       value={item.qty}
                       onChange={(e) =>
-                        updateQty(item.id, Number(e.target.value))
+                        updateQty(item.uiId, Number(e.target.value))
                       }
                     />
                   </td>
@@ -621,18 +741,26 @@ export default function EditOfferPage({
                             }
                             value={
                               item.priceDraft ??
-                              (Number.isFinite(Number(rowPrice)) ? Number(rowPrice).toFixed(2) : "")
+                              (Number.isFinite(Number(rowPrice))
+                                ? Number(rowPrice).toFixed(2)
+                                : "")
                             }
-                            onChange={(e) => updatePriceDraft(item.id, e.target.value)}
+                            onChange={(e) =>
+                              updatePriceDraft(item.uiId, e.target.value)
+                            }
                             placeholder="0.00"
                           />
                           {hasBase ? (
                             <div className="text-[11px] text-slate-500">
-                              Permis: {min.toFixed(2)} – {(max as number).toFixed(2)} (bază {base.toFixed(2)})
+                              Permis: {min.toFixed(2)} –{" "}
+                              {(max as number).toFixed(2)} (bază{" "}
+                              {base.toFixed(2)})
                             </div>
                           ) : null}
                           {item.priceError ? (
-                            <div className="text-[11px] text-red-600">{item.priceError}</div>
+                            <div className="text-[11px] text-red-600">
+                              {item.priceError}
+                            </div>
                           ) : null}
                         </div>
                       );
@@ -646,7 +774,7 @@ export default function EditOfferPage({
                   </td>
                   <td className="px-2 py-2 text-center border-t border-slate-200">
                     <button
-                      onClick={() => removeItem(item.id)}
+                      onClick={() => removeItem(item.uiId)}
                       className="invisible group-hover:visible text-red-500 hover:bg-red-50 p-1 rounded"
                     >
                       <Icons.Trash />
@@ -702,7 +830,9 @@ export default function EditOfferPage({
 
             <div className="flex justify-between text-sm text-slate-600">
               <span>TVA:</span>
-              <span className={includeVat ? "text-emerald-700" : "text-slate-500"}>
+              <span
+                className={includeVat ? "text-emerald-700" : "text-slate-500"}
+              >
                 {includeVat ? "Inclus" : "Exclus"}
               </span>
             </div>
@@ -735,6 +865,184 @@ export default function EditOfferPage({
           </button>
         </div>
       </div>
+      {/* --- ORDER MODAL --- */}
+      {orderModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">
+                  Creează comandă din ofertă
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Selectează rândurile care intră în comandă. (Doar rândurile
+                  deja salvate în DB sunt disponibile.)
+                </div>
+              </div>
+              <button
+                onClick={() => setOrderModalOpen(false)}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                type="button"
+              >
+                Închide
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              {/* Warehouse picker */}
+              {warehouses.length > 0 && (
+                <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <svg
+                    className="h-4 w-4 flex-shrink-0 text-slate-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 10l9-7 9 7v11H3V10z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 20V14h6v6"
+                    />
+                  </svg>
+                  <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">
+                    Depozit expediere:
+                  </label>
+                  <select
+                    value={orderWarehouseId}
+                    onChange={(e) => setOrderWarehouseId(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-[#feab1f]"
+                  >
+                    <option value="">— Fără depozit (alocare manuală) —</option>
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.code} — {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="mb-3 flex items-center justify-between">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={(() => {
+                      const ids = items
+                        .filter((x) => !!x.offerItemId)
+                        .map((x) => x.offerItemId as string);
+                      if (ids.length === 0) return false;
+                      return ids.every((id) => !!orderSelected[id]);
+                    })()}
+                    onChange={(e) => toggleAllOrderItems(e.target.checked)}
+                  />
+                  Selectează toate
+                </label>
+                <div className="text-xs text-slate-500">
+                  Selectate:{" "}
+                  {
+                    items
+                      .filter((x) => !!x.offerItemId)
+                      .map((x) => x.offerItemId as string)
+                      .filter((id) => !!orderSelected[id]).length
+                  }
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-700 w-10"></th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-700">
+                        Produs
+                      </th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-700 w-24 text-center">
+                        Cant.
+                      </th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-700 w-28 text-right">
+                        Preț
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.filter((x) => !!x.offerItemId).length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-4 py-4 text-sm text-slate-600"
+                        >
+                          Nu există rânduri salvate în DB pentru această ofertă.
+                        </td>
+                      </tr>
+                    ) : (
+                      items
+                        .filter((x) => !!x.offerItemId)
+                        .map((it) => {
+                          const id = it.offerItemId as string;
+                          return (
+                            <tr key={id} className="border-t border-slate-200">
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={!!orderSelected[id]}
+                                  onChange={(e) =>
+                                    setOrderSelected((prev) => ({
+                                      ...prev,
+                                      [id]: e.target.checked,
+                                    }))
+                                  }
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="font-semibold text-slate-900">
+                                  {it.name || "—"}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  {it.productId ?? ""}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-center text-slate-700">
+                                {Number(it.qty || 0)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-700">
+                                {Number(it.price || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                onClick={() => setOrderModalOpen(false)}
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                type="button"
+                disabled={creatingOrder}
+              >
+                Renunță
+              </button>
+              <button
+                onClick={createOrderFromOffer}
+                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:bg-slate-400"
+                type="button"
+                disabled={creatingOrder}
+              >
+                {creatingOrder ? "Se creează..." : "Creează comandă"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

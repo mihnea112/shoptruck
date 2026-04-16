@@ -4,29 +4,6 @@ import { MainFooter } from "@/components/layout/MainFooter";
 
 import { headers } from "next/headers";
 
-const featuredCategories = [
-  {
-    slug: "frane",
-    name: "Frâne & etriere",
-    description: "Kituri etrier, discuri, plăcuțe, senzori ABS.",
-  },
-  {
-    slug: "ambreiaj",
-    name: "Ambreiaj & transmisie",
-    description: "Kituri ambreiaj, volantă, rulmenți de presiune.",
-  },
-  {
-    slug: "suspensie",
-    name: "Suspensie & amortizoare",
-    description: "Amortizoare, perne de aer, bare stabilizatoare.",
-  },
-  {
-    slug: "electric",
-    name: "Electric & iluminare",
-    description: "Faruri, stopuri, senzori, Xenon & LED.",
-  },
-];
-
 const highlights = [
   "Identificăm piesa după seria de șasiu",
   "Stoc în România, livrare rapidă",
@@ -87,6 +64,25 @@ async function getBaseUrl() {
   return `${proto}://${host}`;
 }
 
+type HomeCategory = {
+  id: string;
+  slug: string;
+  name: string;
+  product_count: number;
+};
+
+async function getCategories(): Promise<HomeCategory[]> {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/public/categories`, {
+    next: { revalidate: 300 },
+    headers: { accept: "application/json" },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data?.ok || !Array.isArray(data.items)) return [];
+  // Only categories that have products
+  return data.items.filter((c: any) => Number(c.product_count) > 0).slice(0, 8);
+}
+
 async function getLatestProducts(limit = 4): Promise<HomeProduct[]> {
   const base = await getBaseUrl();
   const res = await fetch(
@@ -123,6 +119,7 @@ async function getLatestProducts(limit = 4): Promise<HomeProduct[]> {
 
 export default async function HomePage() {
   const latestProducts = await getLatestProducts(4);
+  const categories = await getCategories();
 
   return (
     <div className="flex min-h-screen flex-col bg-linear-to-b from-black via-neutral-900 to-neutral-800">
@@ -131,7 +128,7 @@ export default async function HomePage() {
       <main className="flex-1">
         {/* HERO */}
         <section className="border-b border-slate-900 bg-linear-to-br from-black via-neutral-900 to-neutral-800 text-white">
-          <div className="flex w-full flex-col gap-12 px-6 py-16 lg:flex-row lg:items-center lg:px-10 xl:px-16">
+          <div className="flex w-full flex-col gap-12 px-4 sm:px-6 lg:px-8 py-16 lg:flex-row lg:items-center">
             <div className="flex-1 space-y-6">
               <span className="inline-flex items-center rounded-full bg-[#feab1f]/15 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-[#feab1f]">
                 AutoTruck · Webshop nou
@@ -221,7 +218,7 @@ export default async function HomePage() {
 
         {/* ✅ PRODUSE RECENTE DIN DB */}
         <section className="border-b border-slate-200 bg-white">
-          <div className="w-full px-6 py-12 lg:px-10 xl:px-16">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-12">
             <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
               <div className="space-y-2">
                 <h2 className="text-xl font-semibold text-slate-900">
@@ -295,7 +292,7 @@ export default async function HomePage() {
 
         {/* CATEGORII */}
         <section className="bg-slate-50">
-          <div className="w-full px-6 py-14 lg:px-10 xl:px-16">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-14">
             <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
               <div className="space-y-2">
                 <h2 className="text-xl font-semibold text-slate-900">
@@ -306,37 +303,40 @@ export default async function HomePage() {
                 </p>
               </div>
               <Link
-                href="/categorii"
+                href="/catalog"
                 className="text-sm font-medium text-slate-700 hover:text-slate-900"
               >
                 Vezi toate categoriile →
               </Link>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {featuredCategories.map((cat) => (
-                <Link
-                  key={cat.slug}
-                  href={`/categorie/${cat.slug}`}
-                  className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h3 className="text-base font-semibold text-slate-900 group-hover:text-[#feab1f]">
-                      {cat.name}
-                    </h3>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                      Demo
+            {categories.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                Nicio categorie disponibila momentan.
+              </div>
+            ) : (
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {categories.map((cat) => (
+                  <Link
+                    key={cat.id}
+                    href={`/catalog?categoryId=${cat.id}`}
+                    className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="text-base font-semibold text-slate-900 group-hover:text-[#feab1f]">
+                        {cat.name}
+                      </h3>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                        {cat.product_count} piese
+                      </span>
+                    </div>
+                    <span className="mt-4 text-sm font-medium text-[#feab1f] group-hover:text-[#feab1f]/80">
+                      Vezi piese →
                     </span>
-                  </div>
-                  <p className="flex-1 text-sm text-slate-500">
-                    {cat.description}
-                  </p>
-                  <span className="mt-4 text-sm font-medium text-[#feab1f] group-hover:text-[#feab1f]/80">
-                    Vezi piese →
-                  </span>
-                </Link>
-              ))}
-            </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </main>

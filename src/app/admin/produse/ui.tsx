@@ -37,6 +37,8 @@ type Product = {
   category_id: string | null;
   tax_rate_id: string;
   uom: string;
+  stock_on_hand?: number;
+  stock_reserved?: number;
 
   brand_name?: string | null;
   category_name?: string | null;
@@ -48,6 +50,8 @@ type Product = {
 
 type ProductDetails = Product & {
   description: string | null;
+  stock_on_hand?: number;
+  stock_reserved?: number;
   primary_code: string | null;
   equivalent_codes: string[];
   created_by_email?: string | null;
@@ -202,6 +206,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   const [primaryCode, setPrimaryCode] = useState("");
 
   const [uom, setUom] = useState("buc");
+  // Stock (manual edit)
+  const [stockOnHand, setStockOnHand] = useState("");
+  const [stockReserved, setStockReserved] = useState(""); // read-only in UI
 
   // Equivalents (string[])
   const [equivCodes, setEquivCodes] = useState<string[]>([]);
@@ -446,6 +453,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     setPrimaryCode("");
 
     setUom("buc");
+    setStockOnHand("");
+    setStockReserved("");
 
     setEquivCodes([]);
     setNewEquivCode("");
@@ -495,6 +504,10 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       setEquivCodes(p.equivalent_codes ?? []);
 
       setUom(p.uom || "buc");
+
+      // stock
+      setStockOnHand(p.stock_on_hand == null ? "" : String(p.stock_on_hand));
+      setStockReserved(p.stock_reserved == null ? "" : String(p.stock_reserved));
 
       setModalOpen(true);
       await loadProductImages(p.id);
@@ -550,6 +563,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
 
     const buy = safeNum(buyPriceNet);
     const mar = safeNum(marginPct);
+    const stock = safeNum(stockOnHand);
 
     const payload: any = {
       sku: sku.trim(),
@@ -567,6 +581,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       category_id: categoryIdEdit.trim() ? categoryIdEdit.trim() : null,
 
       uom: uom.trim() || "buc",
+      stock_on_hand: stock,
 
       primary_code: primaryCode.trim() ? primaryCode.trim() : null,
       equivalent_codes: equivCodes,
@@ -582,6 +597,8 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       return setError("Preț achiziție (fără TVA) invalid.");
     if (payload.profit_margin_pct == null || payload.profit_margin_pct < 0)
       return setError("Marjă (%) invalidă.");
+    if (payload.stock_on_hand == null || payload.stock_on_hand < 0)
+      return setError("Stoc (disponibil) invalid.");
     if (!payload.primary_code) return setError("Cod principal obligatoriu.");
 
     try {
@@ -934,6 +951,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               <th className="px-4 py-3 font-semibold text-slate-700">
                 Preț (cu TVA)
               </th>
+              <th className="px-4 py-3 font-semibold text-slate-700">Stoc</th>
               <th className="px-4 py-3 font-semibold text-slate-700">Activ</th>
               <th className="px-4 py-3 font-semibold text-slate-700">
                 Acțiuni
@@ -945,7 +963,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
               <tr>
                 <td
                   className="px-4 py-4 text-slate-600"
-                  colSpan={isAdmin ? 10 : 9}
+                  colSpan={isAdmin ? 11 : 10}
                 >
                   Nu există produse.
                 </td>
@@ -970,6 +988,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                       );
 
                 const isChecked = isAdmin ? selectedIds.includes(p.id) : false;
+                const onHand = Number((p as any).stock_on_hand ?? 0);
+                const reserved = Number((p as any).stock_reserved ?? 0);
+                const available = onHand - reserved;
 
                 return (
                   <tr key={p.id} className="border-t border-slate-200">
@@ -1012,6 +1033,12 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {gross == null ? "—" : `${gross} lei`}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      <div className="font-semibold text-slate-900">{available.toFixed(3)}</div>
+                      <div className="text-[11px] text-slate-500">
+                        în stoc: {onHand.toFixed(3)} · rezervat: {reserved.toFixed(3)}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {p.is_active ? "Da" : "Nu"}
@@ -1443,6 +1470,53 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                         </div>
                       </>
                     )}
+                  </div>
+                </div>
+
+                {/* Stock */}
+                <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Stoc
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">
+                        Stoc în depozit (on hand)
+                      </label>
+                      <input
+                        value={stockOnHand}
+                        onChange={(e) => setStockOnHand(e.target.value)}
+                        placeholder="ex: 10"
+                        className={inputBase}
+                        inputMode="decimal"
+                      />
+                      <div className="text-[11px] text-slate-500">
+                        Modificare manuală (import / facturi / intrări).
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">
+                        Rezervat (read-only)
+                      </label>
+                      <input
+                        value={stockReserved}
+                        readOnly
+                        className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-900 outline-none"
+                      />
+                      <div className="text-[11px] text-slate-500">
+                        Se modifică automat din comenzi.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-slate-600">
+                    Disponibil: <span className="font-semibold">{(() => {
+                      const oh = safeNum(stockOnHand) ?? 0;
+                      const rs = safeNum(stockReserved) ?? 0;
+                      return (oh - rs).toFixed(3);
+                    })()}</span>
                   </div>
                 </div>
 

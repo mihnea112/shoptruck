@@ -18,6 +18,7 @@ type BulkPatch = {
   brand_id?: string | null;
   category_id?: string | null;
   profit_margin_pct?: number | string | null;
+  stock_on_hand?: number | string | null;
   // If you want to extend later:
   // is_active?: boolean;
   // tax_rate_id?: string | null;
@@ -52,11 +53,12 @@ export async function PATCH(req: NextRequest) {
   const hasBrand = Object.prototype.hasOwnProperty.call(patch, "brand_id");
   const hasCategory = Object.prototype.hasOwnProperty.call(patch, "category_id");
   const hasMargin = Object.prototype.hasOwnProperty.call(patch, "profit_margin_pct");
+  const hasStock = Object.prototype.hasOwnProperty.call(patch, "stock_on_hand");
 
-  if (!hasBrand && !hasCategory && !hasMargin) {
+  if (!hasBrand && !hasCategory && !hasMargin && !hasStock) {
     return json({
       ok: false,
-      error: "patch trebuie să conțină cel puțin unul din: brand_id, category_id, profit_margin_pct.",
+      error: "patch trebuie să conțină cel puțin unul din: brand_id, category_id, profit_margin_pct, stock_on_hand.",
     }, 400);
   }
 
@@ -76,6 +78,19 @@ export async function PATCH(req: NextRequest) {
         return json({ ok: false, error: "profit_margin_pct invalid (>= 0)." }, 400);
       }
       margin = m;
+    }
+  }
+
+  let stockOnHand: number | null = null;
+  if (hasStock) {
+    if (patch.stock_on_hand == null || String(patch.stock_on_hand).trim() === "") {
+      stockOnHand = null;
+    } else {
+      const s = Number(String(patch.stock_on_hand).replace(",", "."));
+      if (!Number.isFinite(s) || s < 0) {
+        return json({ ok: false, error: "stock_on_hand invalid (>= 0)." }, 400);
+      }
+      stockOnHand = s;
     }
   }
 
@@ -115,6 +130,10 @@ export async function PATCH(req: NextRequest) {
         profit_margin_pct = CASE
           WHEN ${hasMargin} THEN ${margin}
           ELSE profit_margin_pct
+        END,
+        stock_on_hand = CASE
+          WHEN ${hasStock} THEN ${stockOnHand}
+          ELSE stock_on_hand
         END,
         updated_at = now()
       WHERE id = ANY(${ids}::uuid[])

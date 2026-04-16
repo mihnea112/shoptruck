@@ -1,265 +1,460 @@
 import React from "react";
-import { Page, Text, View, Document, StyleSheet } from "@react-pdf/renderer";
+import {
+  Page,
+  Text,
+  View,
+  Document,
+  StyleSheet,
+  Image,
+} from "@react-pdf/renderer";
 
-// --- STILURI ---
+// - Styles -
 const styles = StyleSheet.create({
-  page: { padding: 30, fontSize: 9, fontFamily: "Helvetica", color: "#333" },
+  page: {
+    padding: 32,
+    fontSize: 9,
+    fontFamily: "Helvetica",
+    color: "#1e293b",
+    backgroundColor: "#fff",
+  },
 
-  // Header Generic
+  // Header
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
-    paddingBottom: 10,
+    alignItems: "flex-start",
+    marginBottom: 22,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: "#feab1f",
   },
-  title: { fontSize: 18, fontWeight: "bold" },
-  subTitle: { fontSize: 10, color: "#666", marginTop: 5 },
+  titleBlock: { flexDirection: "column" },
+  title: {
+    fontSize: 20,
+    fontFamily: "Helvetica-Bold",
+    color: "#0f172a",
+    letterSpacing: 1,
+  },
+  subTitle: { fontSize: 9, color: "#64748b", marginTop: 3 },
+  dateBlock: { alignItems: "flex-end" },
+  dateText: { fontSize: 9, color: "#475569" },
+  validText: {
+    fontSize: 9,
+    color: "#dc2626",
+    marginTop: 3,
+    fontFamily: "Helvetica-Bold",
+  },
 
-  // Info Client/Vehicul
-  rowInfo: {
+  // Info boxes
+  infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 20,
+    gap: 12,
   },
-  infoBox: { width: "45%" },
-  sectionTitle: {
-    fontWeight: "bold",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+  infoBox: {
+    width: "48%",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    padding: 8,
+    backgroundColor: "#f8fafc",
+  },
+  infoLabel: {
+    fontSize: 7,
+    fontFamily: "Helvetica-Bold",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
     marginBottom: 4,
-    paddingBottom: 2,
-    fontSize: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    paddingBottom: 3,
   },
-  infoText: { marginBottom: 2 },
+  infoText: { fontSize: 9, color: "#1e293b", marginBottom: 2 },
+  infoMuted: { fontSize: 8, color: "#64748b", marginBottom: 2 },
 
-  // TABEL - Configurare
-  table: { marginTop: 10, borderWidth: 1, borderColor: "#eee" },
+  // Table
+  table: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
   tableHeader: {
     flexDirection: "row",
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#f1f5f9",
     paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "#000",
-    fontWeight: "bold",
-    fontSize: 8, // Font puțin mai mic la header pentru a încăpea tot
+    borderBottomColor: "#cbd5e1",
+  },
+  tableHeaderText: {
+    fontSize: 7,
+    fontFamily: "Helvetica-Bold",
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    fontSize: 9,
+    borderBottomColor: "#f1f5f9",
+    alignItems: "center",
+    minHeight: 44,
+  },
+  tableRowAlt: {
+    backgroundColor: "#fafafa",
   },
 
-  // COLOANE TABEL (Total = 100%)
-  // Am ajustat lățimile pentru a face loc la TVA și Total Brut
-  colDesc: { width: "30%" },
-  colQty: { width: "8%", textAlign: "center" },
-  colPrice: { width: "13%", textAlign: "right" }, // Preț Unit
-  colNet: { width: "15%", textAlign: "right" }, // Val. Netă (Cant x Preț)
-  colTaxRate: { width: "9%", textAlign: "center" }, // % TVA
-  colTaxVal: { width: "12%", textAlign: "right" }, // Val. TVA (RON)
-  colTotal: { width: "13%", textAlign: "right" }, // Total Rând (Net + TVA)
+  // Columns
+  colImg: { width: "8%", alignItems: "center", justifyContent: "center" },
+  colDesc: { width: "30%", paddingRight: 4 },
+  colQty: { width: "7%", textAlign: "center" },
+  colPrice: { width: "12%", textAlign: "right" },
+  colNet: { width: "13%", textAlign: "right" },
+  colTaxRate: { width: "8%", textAlign: "center" },
+  colTaxVal: { width: "11%", textAlign: "right" },
+  colTotal: { width: "11%", textAlign: "right" },
 
-  // Totaluri Finale
+  productImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 3,
+    objectFit: "contain",
+    backgroundColor: "#f1f5f9",
+  },
+  imgPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 3,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+
+  productName: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#0f172a" },
+  productSku: { fontSize: 7, color: "#94a3b8", marginTop: 1 },
+
+  // Summary
   summarySection: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 15,
+    marginTop: 16,
   },
-  summaryBox: { width: "40%" },
+  summaryBox: {
+    width: "38%",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
-    paddingBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
-  summaryLabel: { fontSize: 10 },
-  summaryValue: { fontSize: 10, fontWeight: "bold", textAlign: "right" },
-
+  summaryLabel: { fontSize: 9, color: "#475569" },
+  summaryValue: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#1e293b" },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 5,
-    paddingTop: 5,
-    borderTopWidth: 1,
-    borderTopColor: "#000",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "#0f172a",
   },
-  totalLarge: { fontSize: 12, fontWeight: "bold" },
+  totalLabel: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#fff" },
+  totalValue: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#feab1f" },
+
+  // Notes
+  notesBox: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    padding: 8,
+    backgroundColor: "#f8fafc",
+  },
+  notesLabel: {
+    fontSize: 7,
+    fontFamily: "Helvetica-Bold",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  notesText: { fontSize: 9, color: "#475569" },
 
   footer: {
     position: "absolute",
-    bottom: 30,
-    left: 40,
-    right: 40,
-    textAlign: "center",
-    fontSize: 8,
-    color: "#aaa",
+    bottom: 24,
+    left: 32,
+    right: 32,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    paddingTop: 6,
   },
+  footerText: { fontSize: 7, color: "#94a3b8" },
 });
 
+// - Helpers -
+function fmt2(n: number) {
+  return n.toFixed(2).replace(".", ",");
+}
+
+// - Sanitize text for PDF (Helvetica has no diacritics) -
+function s(v: any): string {
+  if (v == null) return "";
+  return String(v)
+    .replace(/[ăĂ]/g, "a")
+    .replace(/[âÂ]/g, "a")
+    .replace(/[îÎ]/g, "i")
+    .replace(/[șşŞȘ]/g, "s")
+    .replace(/[țţŢȚ]/g, "t")
+    .replace(/[éèêëÉÈÊË]/g, "e")
+    .replace(/[àáäÀÁÄ]/g, "a")
+    .replace(/[öÖ]/g, "o")
+    .replace(/[üÜ]/g, "u")
+    .replace(/[—–]/g, "-")
+    .replace(/[""„"]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/[…]/g, "...");
+}
+
+// - PDF Document -
 export default function OfferPDFDocument({ offer }: { offer: any }) {
-  if (!offer)
+  if (!offer) {
     return (
       <Document>
-        <Page>
+        <Page style={styles.page}>
           <Text>No Data</Text>
         </Page>
       </Document>
     );
+  }
 
   const items = offer.items || [];
 
-  // Variabile pentru Totaluri Generale
-  let totalNetGlobal = 0;
-  let totalTVAGlobal = 0;
+  let totalNet = 0;
+  let totalTVA = 0;
 
-  // Procesăm itemele pentru a avea calculele gata de afișare
   const processedItems = items.map((item: any) => {
-    const qty = Number(item.quantity || item.qty) || 1;
-    const price = Number(item.price) || 0; // Preț Unitar
-    const taxPercent = Number(item.tax) || 0; // Cota TVA (ex: 19)
-
-    // Calcule per rând
-    const lineNet = qty * price; // Valoare Netă
-    const lineTVA = lineNet * (taxPercent / 100); // Valoare TVA
-    const lineTotal = lineNet + lineTVA; // Total Brut (Net + TVA)
-
-    // Adăugăm la totalurile globale
-    totalNetGlobal += lineNet;
-    totalTVAGlobal += lineTVA;
-
-    return {
-      ...item,
-      qty,
-      price,
-      taxPercent,
-      lineNet,
-      lineTVA,
-      lineTotal,
-    };
+    const qty = Number(item.quantity ?? item.qty) || 1;
+    const price = Number(item.price ?? item.unit_price_net) || 0;
+    const taxPct = Number(item.tax ?? item.tax_percent) || 0;
+    const lineNet = qty * price;
+    const lineTVA = lineNet * (taxPct / 100);
+    const lineTotal = lineNet + lineTVA;
+    totalNet += lineNet;
+    totalTVA += lineTVA;
+    return { ...item, qty, price, taxPct, lineNet, lineTVA, lineTotal };
   });
 
-  const totalGeneral = totalNetGlobal + totalTVAGlobal;
+  const totalGeneral = totalNet + totalTVA;
 
-  // Helper formatare vehicul
-  const formatVehicle = () => {
-    if (!offer.vehicle) return "-";
-    const { brand, model, plate_number, vin } = offer.vehicle;
-    let text = `${brand || ""} ${model || ""}`.trim();
-    if (plate_number) text += ` (${plate_number})`;
-    if (!text && vin) text = `VIN: ${vin}`;
-    return text || "-";
-  };
+  const veh = offer.vehicle;
+  const vehicleLabel = veh
+    ? [veh.make || veh.brand, veh.model].filter(Boolean).join(" ") || null
+    : null;
+
+  const docNo = String(offer.id ?? "")
+    .slice(0, 8)
+    .toUpperCase();
+  const today = new Date().toLocaleDateString("ro-RO");
+  const validUntil = offer.validUntil
+    ? new Date(offer.validUntil).toLocaleDateString("ro-RO")
+    : null;
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         {/* HEADER */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.titleBlock}>
             <Text style={styles.title}>OFERTA DE PRET</Text>
-            <Text style={styles.subTitle}>
-              Nr. {offer.id?.slice(0, 8).toUpperCase()}
-            </Text>
+            <Text style={styles.subTitle}>Nr. {docNo}</Text>
           </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <Text>Data: {new Date().toLocaleDateString("ro-RO")}</Text>
-            {offer.validUntil && (
-              <Text style={{ fontSize: 9, color: "red", marginTop: 2 }}>
-                Valabil:{" "}
-                {new Date(offer.validUntil).toLocaleDateString("ro-RO")}
-              </Text>
+          <View style={styles.dateBlock}>
+            <Text style={styles.dateText}>Data: {today}</Text>
+            {validUntil && (
+              <Text style={styles.validText}>Valabil pana: {validUntil}</Text>
             )}
           </View>
         </View>
 
-        {/* INFO */}
-        <View style={styles.rowInfo}>
+        {/* CLIENT + VEHICLE */}
+        <View style={styles.infoRow}>
           <View style={styles.infoBox}>
-            <Text style={styles.sectionTitle}>Beneficiar</Text>
+            <Text style={styles.infoLabel}>Beneficiar</Text>
             <Text style={styles.infoText}>
-              {offer.customer?.display_name || offer.clientName || "-"}
+              {s(offer.customer?.display_name || offer.clientName || "-")}
             </Text>
             {offer.customer?.vat_id && (
-              <Text style={styles.infoText}>CUI: {offer.customer.vat_id}</Text>
+              <Text style={styles.infoMuted}>CUI: {offer.customer.vat_id}</Text>
+            )}
+            {offer.customer?.reg_no && (
+              <Text style={styles.infoMuted}>Reg: {offer.customer.reg_no}</Text>
             )}
             {offer.customer?.phone && (
-              <Text style={styles.infoText}>Tel: {offer.customer.phone}</Text>
+              <Text style={styles.infoMuted}>Tel: {offer.customer.phone}</Text>
+            )}
+            {offer.customer?.email && (
+              <Text style={styles.infoMuted}>{offer.customer.email}</Text>
             )}
           </View>
 
           <View style={styles.infoBox}>
-            <Text style={styles.sectionTitle}>Vehicul</Text>
-            <Text style={styles.infoText}>{formatVehicle()}</Text>
-            {offer.vehicle?.vin && (
-              <Text style={styles.infoText}>VIN: {offer.vehicle.vin}</Text>
+            <Text style={styles.infoLabel}>Vehicul</Text>
+            {vehicleLabel && (
+              <Text style={styles.infoText}>{s(vehicleLabel)}</Text>
             )}
+            {(veh?.plate_no || veh?.plate_number) && (
+              <Text style={styles.infoMuted}>
+                Nr.: {s(veh?.plate_no || veh?.plate_number)}
+              </Text>
+            )}
+            {(veh?.chassis_vin || veh?.vin) && (
+              <Text style={styles.infoMuted}>
+                VIN: {s(veh?.chassis_vin || veh?.vin)}
+              </Text>
+            )}
+            {veh?.engine_code && (
+              <Text style={styles.infoMuted}>Motor: {veh.engine_code}</Text>
+            )}
+            {veh?.year && <Text style={styles.infoMuted}>An: {veh.year}</Text>}
           </View>
         </View>
 
-        {/* TABEL COMPLET */}
+        {/* TABLE */}
         <View style={styles.table}>
+          {/* Header row */}
           <View style={styles.tableHeader}>
-            <Text style={styles.colDesc}>Descriere</Text>
-            <Text style={styles.colQty}>Cant.</Text>
-            <Text style={styles.colPrice}>Preț Unit.</Text>
-            <Text style={styles.colNet}>Val. Netă</Text>
-            <Text style={styles.colTaxRate}>TVA %</Text>
-            <Text style={styles.colTaxVal}>Val. TVA</Text>
-            <Text style={styles.colTotal}>Total</Text>
+            <View style={styles.colImg}>
+              <Text style={styles.tableHeaderText}></Text>
+            </View>
+            <View style={styles.colDesc}>
+              <Text style={styles.tableHeaderText}>Produs</Text>
+            </View>
+            <Text style={[styles.tableHeaderText, styles.colQty]}>Cant.</Text>
+            <Text style={[styles.tableHeaderText, styles.colPrice]}>
+              Pret unit
+            </Text>
+            <Text style={[styles.tableHeaderText, styles.colNet]}>
+              Val. neta
+            </Text>
+            <Text style={[styles.tableHeaderText, styles.colTaxRate]}>
+              TVA%
+            </Text>
+            <Text style={[styles.tableHeaderText, styles.colTaxVal]}>TVA</Text>
+            <Text style={[styles.tableHeaderText, styles.colTotal]}>Total</Text>
           </View>
 
+          {/* Data rows */}
           {processedItems.map((item: any, idx: number) => (
-            <View key={idx} style={styles.tableRow}>
-              <Text style={styles.colDesc}>{item.name}</Text>
-              <Text style={styles.colQty}>{item.qty}</Text>
-              <Text style={styles.colPrice}>{item.price.toFixed(2)}</Text>
+            <View
+              key={idx}
+              style={[styles.tableRow, idx % 2 === 1 ? styles.tableRowAlt : {}]}
+            >
+              {/* Product image */}
+              <View style={styles.colImg}>
+                {item.image_url ? (
+                  <Image src={item.image_url} style={styles.productImg} />
+                ) : (
+                  <View style={styles.imgPlaceholder} />
+                )}
+              </View>
 
-              {/* Valoare Netă */}
-              <Text style={styles.colNet}>{item.lineNet.toFixed(2)}</Text>
+              {/* Description */}
+              <View style={styles.colDesc}>
+                <Text style={styles.productName}>{s(item.name)}</Text>
+                {item.sku && (
+                  <Text style={styles.productSku}>SKU: {item.sku}</Text>
+                )}
+              </View>
 
-              {/* Cota TVA */}
-              <Text style={styles.colTaxRate}>{item.taxPercent}%</Text>
-
-              {/* Valoare TVA (Calculată pe rând) */}
-              <Text style={styles.colTaxVal}>{item.lineTVA.toFixed(2)}</Text>
-
-              {/* Total Rând (Net + TVA) */}
-              <Text style={styles.colTotal}>{item.lineTotal.toFixed(2)}</Text>
+              <Text style={[{ fontSize: 9, color: "#1e293b" }, styles.colQty]}>
+                {item.qty}
+              </Text>
+              <Text
+                style={[{ fontSize: 9, color: "#1e293b" }, styles.colPrice]}
+              >
+                {fmt2(item.price)}
+              </Text>
+              <Text style={[{ fontSize: 9, color: "#1e293b" }, styles.colNet]}>
+                {fmt2(item.lineNet)}
+              </Text>
+              <Text
+                style={[{ fontSize: 9, color: "#64748b" }, styles.colTaxRate]}
+              >
+                {item.taxPct}%
+              </Text>
+              <Text
+                style={[{ fontSize: 9, color: "#64748b" }, styles.colTaxVal]}
+              >
+                {fmt2(item.lineTVA)}
+              </Text>
+              <Text
+                style={[
+                  {
+                    fontSize: 9,
+                    fontFamily: "Helvetica-Bold",
+                    color: "#0f172a",
+                  },
+                  styles.colTotal,
+                ]}
+              >
+                {fmt2(item.lineTotal)}
+              </Text>
             </View>
           ))}
         </View>
 
-        {/* TOTALURI FINALE */}
+        {/* SUMMARY */}
         <View style={styles.summarySection}>
           <View style={styles.summaryBox}>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total Net:</Text>
-              <Text style={styles.summaryValue}>
-                {totalNetGlobal.toFixed(2)} RON
-              </Text>
+              <Text style={styles.summaryLabel}>Total net (fara TVA):</Text>
+              <Text style={styles.summaryValue}>{fmt2(totalNet)} RON</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Total TVA:</Text>
-              <Text style={styles.summaryValue}>
-                {totalTVAGlobal.toFixed(2)} RON
-              </Text>
+              <Text style={styles.summaryValue}>{fmt2(totalTVA)} RON</Text>
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLarge}>TOTAL GENERAL:</Text>
-              <Text style={styles.totalLarge}>
-                {totalGeneral.toFixed(2)} RON
-              </Text>
+              <Text style={styles.totalLabel}>TOTAL GENERAL:</Text>
+              <Text style={styles.totalValue}>{fmt2(totalGeneral)} RON</Text>
             </View>
           </View>
         </View>
 
-        <Text style={styles.footer}>Document generat automat.</Text>
+        {/* NOTES */}
+        {offer.notes ? (
+          <View style={styles.notesBox}>
+            <Text style={styles.notesLabel}>Observatii</Text>
+            <Text style={styles.notesText}>{s(offer.notes)}</Text>
+          </View>
+        ) : null}
+
+        {/* FOOTER */}
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>
+            Oferta Nr. {docNo} - {today}
+          </Text>
+          <Text
+            style={styles.footerText}
+            render={({ pageNumber, totalPages }) =>
+              `Pagina ${pageNumber} din ${totalPages}`
+            }
+          />
+        </View>
       </Page>
     </Document>
   );

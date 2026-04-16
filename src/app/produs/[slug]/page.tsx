@@ -30,6 +30,7 @@ type DbProduct = {
   images: PublicImage[];
 
   in_stock: boolean | null;
+  stock_available?: number | null;
 };
 
 type ApiOne<T> = { ok: true; item: T } | { ok: false; error: string };
@@ -68,19 +69,32 @@ async function getProductBySlug(slug: string): Promise<DbProduct | null> {
       // product page can be cached a bit; change to no-store if you want
       next: { revalidate: 60 },
       headers: { accept: "application/json" },
-    }
+    },
   );
 
-  const data = (await res.json().catch(() => ({}))) as ApiOne<DbProduct>;
-  if (!res.ok || !("ok" in data) || !data.ok) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) return null;
 
-  return data.item ?? null;
+  const item = data.item;
+  if (!item) return null;
+  // Attach warehouses to the product object for use in the page
+  (item as any)._warehouses = data.warehouses ?? [];
+  return item as DbProduct;
 }
+
+type WarehouseStock = {
+  id: string;
+  name: string;
+  code: string;
+  stock_available: number;
+  stock_on_hand: number;
+};
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
 
   const product = await getProductBySlug(slug);
+  const warehouseStock: WarehouseStock[] = (product as any)?._warehouses ?? [];
 
   if (!product) {
     return (
@@ -273,15 +287,33 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       </div>
                     </div>
                     <div className="text-xs text-right">
-                      <div
-                        className={`inline-flex rounded-full px-3 py-1 text-[11px] font-semibold ${
-                          inStock
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {inStock ? "În stoc" : "Stoc epuizat"}
-                      </div>
+                      {(() => {
+                        const qty =
+                          product.stock_available ?? (inStock ? 99 : 0);
+                        if (qty <= 0)
+                          return (
+                            <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-[11px] font-semibold text-red-600">
+                              Stoc epuizat
+                            </span>
+                          );
+                        if (qty <= 5)
+                          return (
+                            <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
+                              {qty} bucati disponibile
+                            </span>
+                          );
+                        if (qty < 10)
+                          return (
+                            <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-[11px] font-semibold text-orange-600">
+                              Stoc limitat
+                            </span>
+                          );
+                        return (
+                          <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                            Stoc suficient
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -299,37 +331,72 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   </div>
                 </div>
 
-                {/* Compatibility + shipping info (still demo / placeholder) */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Compatibilitate camion
+                {/* Warehouse stock */}
+                {warehouseStock.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      Disponibilitate depozite
                     </div>
-                    <p className="text-xs text-slate-500">
-                      Compatibilitatea detaliată va fi afișată aici după ce legi
-                      tabela de compatibilitate (ex: product_truck_compatibility).
-                    </p>
+                    <div className="space-y-2">
+                      {warehouseStock.map((wh) => {
+                        const qty = Number(wh.stock_available);
+                        return (
+                          <div
+                            key={wh.id}
+                            className="flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2 text-sm text-slate-700">
+                              <span className="rounded-md bg-slate-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                                {wh.code}
+                              </span>
+                              {wh.name}
+                            </div>
+                            <div>
+                              {qty <= 0 ? (
+                                <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-500">
+                                  Indisponibil
+                                </span>
+                              ) : qty <= 5 ? (
+                                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                  {qty} buc
+                                </span>
+                              ) : qty < 10 ? (
+                                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
+                                  Stoc limitat
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                  Stoc suficient
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
+                )}
 
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Livrare & suport
-                    </div>
-                    <ul className="space-y-1 text-sm">
-                      <li className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                        Livrare rapidă în 24–48h pentru produsele aflate în stoc.
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                        Suport telefonic pentru identificarea piesei corecte.
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                        Retur acceptat pentru piese nemontate, în ambalaj original.
-                      </li>
-                    </ul>
+                {/* Livrare */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Livrare & suport
                   </div>
+                  <ul className="space-y-1 text-sm">
+                    <li className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      Livrare rapida in 24-48h pentru produsele aflate in stoc.
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      Suport telefonic pentru identificarea piesei corecte.
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      Retur acceptat pentru piese nemontate, in ambalaj
+                      original.
+                    </li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -351,8 +418,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 </h3>
                 <ul className="space-y-1 text-xs">
                   <li>
-                    • Se recomandă montajul într-un service autorizat și folosirea
-                    de scule adecvate.
+                    • Se recomandă montajul într-un service autorizat și
+                    folosirea de scule adecvate.
                   </li>
                   <li>
                     • Verifică întotdeauna compatibilitatea pe seria de șasiu

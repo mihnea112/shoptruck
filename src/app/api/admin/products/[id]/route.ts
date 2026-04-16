@@ -93,6 +93,8 @@ export async function GET(req: Request, ctx: Ctx) {
       profit_margin_pct,
       uom,
       is_active,
+      stock_on_hand,
+      stock_reserved,
       created_at,
       updated_at
     FROM product
@@ -202,6 +204,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
   const uom = String(body?.uom ?? "buc").trim() || "buc";
 
+  // parse manual stock edit
+  const stockOnHand = parseDecimal(
+    body?.stock_on_hand ?? body?.stockOnHand ?? body?.stock
+  );
+
   if (!sku || sku.length < 2)
     return json({ ok: false, error: "SKU invalid." }, 400);
   if (!name || name.length < 2)
@@ -222,6 +229,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
   }
   if (marginPct > 1000) {
     return json({ ok: false, error: "Marjă prea mare (max 1000%)." }, 400);
+  }
+  if (stockOnHand != null && stockOnHand < 0) {
+    return json({ ok: false, error: "Stoc invalid (>= 0)." }, 400);
   }
 
   // --- CODES (PRIMARY = SKU, EQUIVALENTS OPTIONAL) ---
@@ -315,6 +325,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
         uom = ${uom},
         is_active = ${isActive},
+        stock_on_hand = COALESCE(${stockOnHand}, stock_on_hand),
         updated_at = now()
       WHERE id = ${id}::uuid
       RETURNING id
