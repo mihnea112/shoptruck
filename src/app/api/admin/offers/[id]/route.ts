@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth/api";
 
 type Ctx = { params: { id: string } | Promise<{ id: string }> };
@@ -86,7 +87,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
       LEFT JOIN LATERAL (
         SELECT storage_path
         FROM product_image
-        WHERE product_id = oi.product_id AND is_primary = true
+        WHERE product_id = oi.product_id
+        ORDER BY is_primary DESC, sort_order ASC, created_at ASC
         LIMIT 1
       ) pi ON true
       WHERE oi.offer_id = ${id}::uuid
@@ -152,29 +154,46 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         total_gross: Number(offer.total_gross ?? 0),
       },
 
-      // UI expects qty/price/tax(%)
-      items: (itemRows || []).map((i: any) => {
-        const qty = Number(i.quantity) || 1;
-        const unitNet = Number(i.unit_price_net ?? 0);
-        const taxFrac = Number(i.tax_rate ?? 0);
-        const taxPct = taxFrac <= 1 ? taxFrac * 100 : taxFrac;
-        return {
-          id: i.id,
-          offerItemId: i.id,
-          productId: i.product_id,
-          name: i.name,
-          sku: i.product_sku ?? null,
-          qty,
-          quantity: qty,
-          price: unitNet,
-          tax: taxPct,
-          tax_rate: taxFrac,
-          primary_image_path: i.primary_image_path ?? null,
-          image_url: i.primary_image_path
-            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/${i.primary_image_path}`
-            : null,
-        };
-      }),
+      // UI expects qty/price/tax(%) — build image URLs with signed URLs for Supabase Storage
+      items: await (async () => {
+        const sb = supabaseAdmin();
+        return Promise.all(
+          (itemRows || []).map(async (i: any) => {
+            const qty = Number(i.quantity) || 1;
+            const unitNet = Number(i.unit_price_net ?? 0);
+            const taxFrac = Number(i.tax_rate ?? 0);
+            const taxPct = taxFrac <= 1 ? taxFrac * 100 : taxFrac;
+            // Build image URL — signed for Supabase Storage, passthrough for external URLs
+            const rawPath = i.primary_image_path ?? null;
+            let imageUrl: string | null = null;
+            if (rawPath) {
+              if (/^https?:\/\//i.test(rawPath)) {
+                imageUrl = rawPath;
+              } else {
+                const { data } = await sb.storage
+                  .from("product-images")
+                  .createSignedUrl(rawPath, 3600);
+                imageUrl = data?.signedUrl ?? null;
+              }
+            }
+
+            return {
+              id: i.id,
+              offerItemId: i.id,
+              productId: i.product_id,
+              name: i.name,
+              sku: i.product_sku ?? null,
+              qty,
+              quantity: qty,
+              price: unitNet,
+              tax: taxPct,
+              tax_rate: taxFrac,
+              primary_image_path: imageUrl ?? rawPath,
+              image_url: imageUrl,
+            };
+          }),
+        );
+      })(),
     };
 
     return json({ ok: true, data: formattedData });

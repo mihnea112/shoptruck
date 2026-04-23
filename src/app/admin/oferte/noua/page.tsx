@@ -137,15 +137,9 @@ export default function NewOfferPage() {
   // Stare
   const [customer, setCustomer] = useState<CustomerDTO | null>(null);
   // TVA is shown/included for INDIVIDUAL customers, excluded for others (e.g. COMPANY)
-  const [vatEnabled, setVatEnabled] = useState(true);
+  const vatEnabled = true; // TVA always included
 
-  useEffect(() => {
-    const k = String((customer as any)?.kind ?? "").toLowerCase();
-    // support: "individual" / "INDIVIDUAL" and potential variants
-    const isIndividual =
-      k === "individual" || k === "person" || k === "private";
-    setVatEnabled(isIndividual);
-  }, [customer]);
+  // TVA always included regardless of customer type
   const [vehicle, setVehicle] = useState({
     chassis_vin: "",
     plate_no: "",
@@ -569,17 +563,14 @@ export default function NewOfferPage() {
       </div>
 
       {/* LISTA PRODUSE - ACTUALIZATA */}
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="text-sm font-semibold text-slate-900">
             Articole și Manoperă
           </div>
         </div>
 
-        <table
-          className="w-full text-left text-sm"
-          style={{ borderCollapse: "separate", borderSpacing: 0 }}
-        >
+        <table className="w-full text-left text-sm">
           <thead className="bg-slate-50">
             <tr>
               <th className={tableHeader}>Produs (Căutare)</th>

@@ -148,135 +148,20 @@ export default function EditOfferPage({
   const [notes, setNotes] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
-  // TVA: include for INDIVIDUAL, exclude for COMPANY
-  const isIndividualKind = (k: any) => {
-    const v = String(k ?? "").toLowerCase();
-    return (
-      v === "individual" ||
-      v === "person" ||
-      v === "private" ||
-      v === "ind" ||
-      v === "pf"
-    );
-  };
+  // TVA always included
+  const includeVat = true;
 
-  const isCompanyKind = (k: any) => {
-    const v = String(k ?? "").toLowerCase();
-    return v === "company" || v === "business" || v === "srl" || v === "sr";
-  };
-
-  // Default to including TVA if kind is missing/unknown
-  const includeVat = (() => {
-    const k = (customer as any)?.kind;
-    if (!k) return true;
-    if (isCompanyKind(k)) return false;
-    if (isIndividualKind(k)) return true;
-    return true;
-  })();
-
-  // ÎNCĂRCARE DATE
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await fetch(`/api/admin/offers/${offerId}`);
-        const json = await res.json();
-
-        if (!json.ok) {
-          alert("Oferta nu a fost găsită.");
-          router.push("/admin/oferte");
-          return;
-        }
-
-        const d = json.data;
-        setCustomer(d.customer);
-
-        // Populam vehiculul
-        // Luam ID-ul prioritar din d.vehicle_id, apoi din obiect
-        const vData = d.vehicle || {};
-        setVehicle({
-          id: d.vehicle_id || vData.id || "",
-          chassis_vin: vData.chassis_vin || vData.vin || "",
-          plate_no: vData.plate_no || vData.plate_number || "",
-          make: vData.make || vData.brand || "",
-          model: vData.model || "",
-          series: vData.series || "",
-          engine_code: vData.engine_code || "",
-          year: vData.year || new Date().getFullYear(),
-        });
-
-        // Mapam items
-        setItems(
-          d.items.map((i: any) => {
-            const price = Number(i.price);
-            const basePrice = Number.isFinite(Number(i.base_price))
-              ? Number(i.base_price)
-              : Number.isFinite(price)
-                ? price
-                : 0;
-
-            const numericPrice = Number.isFinite(price) ? price : 0;
-
-            return {
-              ...i,
-              offerItemId: i.id ? String(i.id) : null,
-              uiId: Date.now() + Math.random(),
-              price: numericPrice,
-              basePrice,
-              priceDraft: Number.isFinite(numericPrice)
-                ? numericPrice.toFixed(2)
-                : "0.00",
-              priceError: null,
-              qty: Number(i.quantity || i.qty),
-              tax: Number(i.tax || i.tax_percentage),
-            };
-          }),
-        );
-
-        setNotes(d.notes || "");
-
-        if (d.validUntil || d.valid_until) {
-          const dateObj = new Date(d.validUntil || d.valid_until);
-          setValidUntil(dateObj.toISOString().split("T")[0]);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setFetching(false);
-      }
-    }
-    loadData();
-  }, [offerId, router]);
-
-  // Load warehouses on mount so picker is ready when modal opens
-  useEffect(() => {
-    fetch("/api/admin/warehouses", { headers: { accept: "application/json" } })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok && Array.isArray(d.items)) {
-          const active = d.items.filter((w: any) => w.is_active);
-          setWarehouses(active);
-          if (active.length > 0) setOrderWarehouseId(active[0].id);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // CALCULE
   const totalNet = items.reduce(
     (acc, i) => acc + Number(i.qty || 0) * Number(i.price || 0),
     0,
   );
 
-  const totalTax = includeVat
-    ? items.reduce(
-        (acc, i) =>
-          acc +
-          Number(i.qty || 0) *
-            Number(i.price || 0) *
-            (Number(i.tax || 0) / 100),
-        0,
-      )
-    : 0;
+  const totalTax = items.reduce(
+    (acc, i) =>
+      acc +
+      Number(i.qty || 0) * Number(i.price || 0) * (Number(i.tax || 0) / 100),
+    0,
+  );
 
   const totalGross = totalNet + totalTax;
 
@@ -366,10 +251,6 @@ export default function EditOfferPage({
     {},
   );
   const [creatingOrder, setCreatingOrder] = useState(false);
-  const [orderWarehouseId, setOrderWarehouseId] = useState<string>("");
-  const [warehouses, setWarehouses] = useState<
-    { id: string; code: string; name: string }[]
-  >([]);
 
   const openOrderModal = () => {
     // default: select all existing offer items that exist in DB
@@ -413,11 +294,7 @@ export default function EditOfferPage({
       const res = await fetch(`/api/admin/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          offer_id: offerId,
-          item_ids: itemIds,
-          warehouse_id: orderWarehouseId || null,
-        }),
+        body: JSON.stringify({ offer_id: offerId, item_ids: itemIds }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
@@ -673,11 +550,8 @@ export default function EditOfferPage({
       </div>
 
       {/* TABEL PRODUSE */}
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table
-          className="w-full text-left text-sm"
-          style={{ borderCollapse: "separate", borderSpacing: 0 }}
-        >
+      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full text-left text-sm">
           <thead className="bg-slate-50">
             <tr>
               <th className={tableHeader}>Produs</th>
@@ -889,45 +763,6 @@ export default function EditOfferPage({
             </div>
 
             <div className="px-5 py-4">
-              {/* Warehouse picker */}
-              {warehouses.length > 0 && (
-                <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <svg
-                    className="h-4 w-4 flex-shrink-0 text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 10l9-7 9 7v11H3V10z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 20V14h6v6"
-                    />
-                  </svg>
-                  <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">
-                    Depozit expediere:
-                  </label>
-                  <select
-                    value={orderWarehouseId}
-                    onChange={(e) => setOrderWarehouseId(e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-[#feab1f]"
-                  >
-                    <option value="">— Fără depozit (alocare manuală) —</option>
-                    {warehouses.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.code} — {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               <div className="mb-3 flex items-center justify-between">
                 <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                   <input

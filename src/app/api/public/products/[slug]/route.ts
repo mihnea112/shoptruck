@@ -20,8 +20,11 @@ function normalizeTaxRate(rate: number) {
   return rate <= 1 ? rate : rate / 100;
 }
 function toPublicUrl(storagePath: string | null) {
+  if (!storagePath) return null;
+  // Already a full URL (e.g. external images from old site)
+  if (/^https?:\/\//i.test(storagePath)) return storagePath;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  if (!supabaseUrl || !storagePath) return null;
+  if (!supabaseUrl) return null;
   return `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${storagePath}`;
 }
 

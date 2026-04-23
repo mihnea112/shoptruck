@@ -33,6 +33,8 @@ function formatMoney(n: number) {
 
 function getImageUrl(path: string | null | undefined): string | null {
   if (!path) return null;
+  // If it's already a full URL (e.g. migrated from old site), return as-is
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base) return null;
   return `${base}/storage/v1/object/public/product-images/${path}`;
@@ -235,7 +237,7 @@ export default function ProductAutocomplete({
           slug: x.slug ?? null,
           brand_name: x.brand_name ?? null,
           primary_code: x.primary_code ?? null,
-          primary_image_path: x.primary_image_path ?? null,
+          primary_image_path: x.image_url ?? x.primary_image_path ?? null,
           price: Number(x.price ?? 0),
           price_gross: x.price_gross == null ? null : Number(x.price_gross),
           vat_percent: Number(x.vat_percent ?? 0),
