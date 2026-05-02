@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ProductGenerator from "../product-generator";
 
 interface Campaign {
   id: string;
@@ -352,6 +353,17 @@ export default function CampaignEditorUI({ campaignId, isNew }: CampaignEditorUI
                 {generatingAI ? "Se generează..." : "Generează cu IA"}
               </button>
             </div>
+          )}
+
+          {/* Product-based Email Generator */}
+          {isEditable && (
+            <ProductGenerator
+              onGenerate={(html, text) => {
+                setForm({ ...form, body_html: html, body_text: text });
+                setMessage({ type: "success", text: "Email generat cu succes!" });
+              }}
+              onGeneratingChange={setGeneratingAI}
+            />
           )}
 
           {/* HTML Body */}

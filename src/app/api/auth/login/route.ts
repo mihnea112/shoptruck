@@ -11,6 +11,8 @@ export async function POST(req: Request) {
   const password = String(body?.password ?? "");
   const mode = String(body?.mode ?? "cookie").toLowerCase();
 
+  console.log("[LOGIN] Email:", email, "Mode:", mode);
+
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -40,6 +42,8 @@ export async function POST(req: Request) {
     email,
     password,
   });
+
+  console.log("[LOGIN] Sign in result:", { hasUser: !!data?.user, error: signInError?.message });
 
   if (signInError || !data?.user) {
     return NextResponse.json(
@@ -100,8 +104,10 @@ export async function POST(req: Request) {
 
   let redirectTo = "/";
   if (nextParam) redirectTo = nextParam;
+  else if (roles.includes("admin")) redirectTo = "/admin";
   else if (dbDefaultRoute && safeNext(dbDefaultRoute)) redirectTo = dbDefaultRoute;
   else if (kind === "staff") redirectTo = landingRouteForRoles(roles);
+  else redirectTo = "/account";
 
   const session = data.session ?? null;
 
@@ -121,6 +127,8 @@ export async function POST(req: Request) {
           redirectTo,
         };
 
+  console.log("[LOGIN] Response payload:", { ok: payload.ok, redirectTo: payload.redirectTo, cookiesCount: cookieBuffer.length });
+
   // Build the final response and apply cookies that Supabase requested
   const response = NextResponse.json(payload, {
     status: 200,
@@ -131,5 +139,6 @@ export async function POST(req: Request) {
     response.cookies.set(name, value, options);
   }
 
+  console.log("[LOGIN] Response sent with cookies:", cookieBuffer.map(c => c.name));
   return response;
 }

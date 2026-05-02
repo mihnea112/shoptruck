@@ -49,7 +49,7 @@ export default function CartClient() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6 md:p-8 text-center">
         <div className="mb-4 text-4xl">🛒</div>
         <h3 className="mb-2 text-lg font-semibold text-slate-900">
           Coșul tău este gol
@@ -59,7 +59,7 @@ export default function CartClient() {
         </p>
         <Link
           href="/catalog"
-          className="inline-block rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+          className="inline-block rounded-full bg-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
         >
           Mergi la catalog
         </Link>
@@ -113,13 +113,13 @@ export default function CartClient() {
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden space-y-3">
+        <div className="md:hidden space-y-3 sm:space-y-4">
           {items.map((item) => (
             <div
               key={item.id}
-              className="rounded-2xl border border-slate-200 bg-white p-4"
+              className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4"
             >
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-3 sm:gap-4 mb-4">
                 {/* Image */}
                 {item.primary_image_path && (
                   <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100">
@@ -136,7 +136,7 @@ export default function CartClient() {
                 <div className="flex-1 min-w-0">
                   <Link
                     href={`/produs/${item.slug}`}
-                    className="font-medium text-slate-900 hover:text-amber-600 transition truncate block"
+                    className="font-medium text-slate-900 text-amber-400 hover:text-amber-300 transition truncate block"
                   >
                     {item.name}
                   </Link>
@@ -191,7 +191,7 @@ export default function CartClient() {
       </div>
 
       {/* Summary */}
-      <div className="mt-6 max-w-sm ml-auto">
+      <div className="mt-4 sm:mt-6 max-w-sm ml-auto">
         <CartSummary
           subtotalNet={total.net}
           tax={total.tax}

@@ -7,12 +7,12 @@ export default function AccountClient() {
   const [activeTab, setActiveTab] = useState<"profile" | "orders" | "favorites">("profile");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full">
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-slate-200 overflow-x-auto">
+      <div className="flex gap-2 sm:gap-4 border-b border-slate-200 overflow-x-auto">
         <button
           onClick={() => setActiveTab("profile")}
-          className={`px-4 py-3 font-medium text-sm transition whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm transition whitespace-nowrap ${
             activeTab === "profile"
               ? "text-amber-600 border-b-2 border-amber-600"
               : "text-slate-600 hover:text-slate-900"
@@ -22,7 +22,7 @@ export default function AccountClient() {
         </button>
         <button
           onClick={() => setActiveTab("orders")}
-          className={`px-4 py-3 font-medium text-sm transition whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm transition whitespace-nowrap ${
             activeTab === "orders"
               ? "text-amber-600 border-b-2 border-amber-600"
               : "text-slate-600 hover:text-slate-900"
@@ -32,7 +32,7 @@ export default function AccountClient() {
         </button>
         <button
           onClick={() => setActiveTab("favorites")}
-          className={`px-4 py-3 font-medium text-sm transition whitespace-nowrap ${
+          className={`px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm transition whitespace-nowrap ${
             activeTab === "favorites"
               ? "text-amber-600 border-b-2 border-amber-600"
               : "text-slate-600 hover:text-slate-900"
@@ -46,40 +46,40 @@ export default function AccountClient() {
       {activeTab === "profile" ? (
         <ProfileForm />
       ) : activeTab === "orders" ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
-          <div className="mb-4 text-4xl">📦</div>
-          <h3 className="mb-2 text-lg font-semibold text-slate-900">
-            Nu ai nici o comandă yet
+        <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6 md:p-8 text-center">
+          <div className="mb-3 sm:mb-4 text-3xl sm:text-4xl">📦</div>
+          <h3 className="mb-1 sm:mb-2 text-base sm:text-lg font-semibold text-slate-900">
+            Nu ai nici o comandă
           </h3>
-          <p className="mb-6 text-sm text-slate-600">
+          <p className="mb-4 sm:mb-6 text-xs sm:text-sm text-slate-600">
             Explorează catalogul și plasează prima comandă
           </p>
           <Link
             href="/catalog"
-            className="inline-block rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+            className="inline-block rounded-full bg-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition"
           >
             Mergi la catalog
           </Link>
         </div>
       ) : (
-        <div>
-          <p className="text-sm text-slate-600 mb-4">
+        <div className="w-full">
+          <p className="text-xs sm:text-sm text-slate-600 mb-4">
             Vedere detaliată a dorințelor tale - accesează{" "}
             <Link href="/dorinte" className="font-medium text-amber-600 hover:text-amber-700">
               lista de dorințe completă
             </Link>
           </p>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
-            <div className="mb-4 text-4xl">♡</div>
-            <h3 className="mb-2 text-lg font-semibold text-slate-900">
+          <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6 md:p-8 text-center">
+            <div className="mb-3 sm:mb-4 text-3xl sm:text-4xl">♡</div>
+            <h3 className="mb-1 sm:mb-2 text-base sm:text-lg font-semibold text-slate-900">
               Nu ai salvat nici un produs
             </h3>
-            <p className="mb-6 text-sm text-slate-600">
+            <p className="mb-4 sm:mb-6 text-xs sm:text-sm text-slate-600">
               Explorează catalogul și adaugă produsele care îți plac
             </p>
             <Link
               href="/catalog"
-              className="inline-block rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+              className="inline-block rounded-full bg-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition"
             >
               Mergi la catalog
             </Link>
@@ -165,10 +165,10 @@ function ProfileForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6 w-full">
       {message && (
         <div
-          className={`rounded-lg p-4 ${
+          className={`rounded-lg p-3 sm:p-4 text-xs sm:text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-800"
               : "bg-red-50 text-red-800"
@@ -178,9 +178,9 @@ function ProfileForm() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Prenume
           </label>
           <input
@@ -188,12 +188,12 @@ function ProfileForm() {
             name="firstName"
             value={formData.firstName}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
             placeholder="Ex: Ion"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Nume
           </label>
           <input
@@ -201,15 +201,15 @@ function ProfileForm() {
             name="lastName"
             value={formData.lastName}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
             placeholder="Ex: Popescu"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Email
           </label>
           <input
@@ -217,12 +217,12 @@ function ProfileForm() {
             name="email"
             value={formData.email}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
             placeholder="Ex: ion@example.com"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Telefon
           </label>
           <input
@@ -230,14 +230,14 @@ function ProfileForm() {
             name="phone"
             value={formData.phone}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
             placeholder="Ex: +40 123 456 789"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-900 mb-2">
+        <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
           Adresă
         </label>
         <input
@@ -245,14 +245,14 @@ function ProfileForm() {
           name="address"
           value={formData.address}
           onChange={handleChange}
-          className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+          className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
           placeholder="Ex: Str. Principală 123"
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-3">
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Oraș
           </label>
           <input
@@ -260,12 +260,12 @@ function ProfileForm() {
             name="city"
             value={formData.city}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
             placeholder="Ex: București"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Cod poștal
           </label>
           <input
@@ -273,19 +273,19 @@ function ProfileForm() {
             name="postalCode"
             value={formData.postalCode}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none transition"
             placeholder="Ex: 010000"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-900 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-1 sm:mb-2">
             Țară
           </label>
           <select
             name="country"
             value={formData.country}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 focus:border-amber-600 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-xs sm:text-sm text-slate-900 focus:border-amber-600 focus:outline-none transition"
           >
             <option>România</option>
             <option>Bulgaria</option>
@@ -300,7 +300,7 @@ function ProfileForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-amber-600 px-6 py-3 font-semibold text-white hover:bg-amber-700 disabled:opacity-50 transition"
+        className="w-full rounded-lg bg-amber-400 px-4 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50 transition"
       >
         {loading ? "Se salvează..." : "Salvează modificări"}
       </button>

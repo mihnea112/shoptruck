@@ -42,7 +42,7 @@ export function CartSummary({
 
       <div className="mb-6 flex justify-between">
         <span className="text-lg font-semibold text-slate-900">Total:</span>
-        <span className="text-2xl font-bold text-amber-600">
+        <span className="text-2xl font-bold text-amber-400">
           {formatRON(totalGross)}
         </span>
       </div>
@@ -53,7 +53,7 @@ export function CartSummary({
           block w-full py-3 rounded-full font-semibold text-center
           transition
           ${itemCount > 0
-            ? "bg-amber-600 text-white hover:bg-amber-700"
+            ? "bg-amber-400 text-slate-950 hover:bg-amber-300"
             : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }
         `}

@@ -39,6 +39,7 @@ export async function GET(
       p.id,
       p.slug,
       p.name,
+      p.description,
       p.buy_price_net,
       p.profit_margin_pct,
       p.is_active,
@@ -52,7 +53,9 @@ export async function GET(
       pc_primary.code_norm AS primary_code,
 
       img.primary_image_path,
-      img.images_json
+      img.images_json,
+
+      codes.all_codes_json
 
     FROM product p
     JOIN tax_rate tr ON tr.id = p.tax_rate_id
@@ -92,6 +95,26 @@ export async function GET(
       WHERE pi.product_id = p.id
     ) img ON true
 
+    LEFT JOIN LATERAL (
+      SELECT
+        COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'code_raw', pc.code_raw,
+              'code_norm', pc.code_norm,
+              'is_primary', prc.is_primary,
+              'code_kind', prc.code_kind,
+              'note', prc.note
+            )
+            ORDER BY prc.is_primary DESC, pc.code_norm ASC
+          ) FILTER (WHERE pc.id IS NOT NULL),
+          '[]'::jsonb
+        ) AS all_codes_json
+      FROM product_code prc
+      JOIN part_code pc ON pc.id = prc.code_id
+      WHERE prc.product_id = p.id
+    ) codes ON true
+
     WHERE p.slug = $1
     LIMIT 1
   `;
@@ -110,6 +133,85 @@ export async function GET(
     ORDER BY w.created_at ASC
   `;
 
+  const suggestedProductsSql = `
+    WITH current_product AS (
+      SELECT id, slug, brand_id, category_id FROM product WHERE slug = $1 LIMIT 1
+    ),
+    current_codes AS (
+      SELECT DISTINCT pc.code_norm
+      FROM product_code prc
+      JOIN part_code pc ON pc.id = prc.code_id
+      WHERE prc.product_id = (SELECT id FROM current_product)
+    )
+    SELECT DISTINCT ON (p.id)
+      p.id,
+      p.slug,
+      p.name,
+      p.buy_price_net,
+      p.profit_margin_pct,
+      tr.rate AS tax_rate,
+      b.name AS brand_name,
+      pi.storage_path,
+      -- Priority: 1 if code match, 2 if category/brand match
+      CASE
+        WHEN EXISTS (
+          SELECT 1 FROM product_code prc2
+          JOIN part_code pc ON pc.id = prc2.code_id
+          WHERE prc2.product_id = p.id
+            AND pc.code_norm IN (SELECT code_norm FROM current_codes)
+        ) THEN 1
+        ELSE 2
+      END AS match_priority
+    FROM product p
+    JOIN tax_rate tr ON tr.id = p.tax_rate_id
+    LEFT JOIN brand b ON b.id = p.brand_id
+    LEFT JOIN product_image pi ON pi.product_id = p.id AND pi.is_primary = true
+    WHERE p.is_active = true
+      AND p.slug != $1
+      AND (
+        -- Match 1: Products with same codes
+        EXISTS (
+          SELECT 1 FROM product_code prc2
+          JOIN part_code pc ON pc.id = prc2.code_id
+          WHERE prc2.product_id = p.id
+            AND pc.code_norm IN (SELECT code_norm FROM current_codes)
+        )
+        OR
+        -- Match 2: Products in same category or brand
+        (p.category_id = (SELECT category_id FROM current_product) OR p.brand_id = (SELECT brand_id FROM current_product))
+      )
+    ORDER BY p.id, match_priority ASC, RANDOM()
+    LIMIT 12
+  `;
+
+  const relatedProductsSql = `
+    SELECT DISTINCT
+      p.id,
+      p.slug,
+      p.name,
+      p.buy_price_net,
+      p.profit_margin_pct,
+      tr.rate AS tax_rate,
+      b.name AS brand_name,
+      pi.storage_path
+    FROM product p
+    JOIN tax_rate tr ON tr.id = p.tax_rate_id
+    LEFT JOIN brand b ON b.id = p.brand_id
+    LEFT JOIN product_image pi ON pi.product_id = p.id AND pi.is_primary = true
+    WHERE p.is_active = true
+      AND p.slug != $1
+      AND p.id IN (
+        SELECT DISTINCT prc2.product_id
+        FROM product_code prc2
+        WHERE prc2.code_id IN (
+          SELECT code_id FROM product_code
+          WHERE product_id = (SELECT id FROM product WHERE slug = $1 LIMIT 1)
+        )
+      )
+    ORDER BY RANDOM()
+    LIMIT 12
+  `;
+
   try {
     const [{ rows }, { rows: whRows }] = await Promise.all([
       pool.query(sql, [slug]),
@@ -121,6 +223,27 @@ export async function GET(
         { ok: false, error: "Not found" },
         { status: 404 },
       );
+    }
+
+    // Get suggested products separately, with error handling
+    let suggestedRows: any[] = [];
+    try {
+      const suggestedResult = await pool.query(suggestedProductsSql, [slug]);
+      suggestedRows = suggestedResult.rows || [];
+    } catch (e) {
+      console.error("[Suggested Products Query Error]", e);
+      suggestedRows = [];
+    }
+
+    // Get related products separately, with error handling
+    let relatedRows: any[] = [];
+    try {
+      const relatedResult = await pool.query(relatedProductsSql, [slug]);
+      relatedRows = relatedResult.rows || [];
+    } catch (e) {
+      console.error("[Related Products Query Error]", e);
+      // Continue without related products if the query fails
+      relatedRows = [];
     }
 
     // If you want public pages to show only active products:
@@ -152,17 +275,25 @@ export async function GET(
       })
       .filter(Boolean);
 
+    const codesJson = r.all_codes_json ?? [];
+    const codesArr = Array.isArray(codesJson) ? codesJson : [];
+    const equivalentCodes = codesArr
+      .filter((c: any) => !c.is_primary)
+      .map((c: any) => c.code_norm);
+
     const item = {
       id: r.id,
       slug: r.slug,
       name: r.name,
 
-      short: null, // you don't have description
-      description: null, // you don't have description
+      short: null,
+      description: r.description ?? null,
 
       brand_name: r.brand_name ?? null,
       category_name: r.category_name ?? null,
       primary_code: r.primary_code ?? null,
+      equivalent_codes: equivalentCodes,
+      all_codes: codesArr,
 
       price_gross: sellGross,
 
@@ -177,7 +308,47 @@ export async function GET(
         Number(r.stock_on_hand ?? 0) - Number(r.stock_reserved ?? 0) > 0,
     };
 
-    return NextResponse.json({ ok: true, item, warehouses: whRows });
+    // Process suggested products
+    const suggestedProducts = (suggestedRows as any[]).map((sp) => {
+      const spTaxFrac = normalizeTaxRate(Number(sp.tax_rate));
+      const spSellNet =
+        Number(sp.buy_price_net) * (1 + Number(sp.profit_margin_pct) / 100);
+      const spSellGross = ceilToLeu(spSellNet * (1 + spTaxFrac));
+
+      return {
+        id: sp.id,
+        slug: sp.slug,
+        name: sp.name,
+        brand_name: sp.brand_name ?? null,
+        price_gross: spSellGross,
+        image_url: toPublicUrl(sp.storage_path ?? null),
+      };
+    });
+
+    // Process related products
+    const relatedProducts = (relatedRows as any[]).map((rp) => {
+      const rpTaxFrac = normalizeTaxRate(Number(rp.tax_rate));
+      const rpSellNet =
+        Number(rp.buy_price_net) * (1 + Number(rp.profit_margin_pct) / 100);
+      const rpSellGross = ceilToLeu(rpSellNet * (1 + rpTaxFrac));
+
+      return {
+        id: rp.id,
+        slug: rp.slug,
+        name: rp.name,
+        brand_name: rp.brand_name ?? null,
+        price_gross: rpSellGross,
+        image_url: toPublicUrl(rp.storage_path ?? null),
+      };
+    });
+
+    return NextResponse.json({
+      ok: true,
+      item,
+      warehouses: whRows,
+      suggestedProducts,
+      relatedProducts,
+    });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Failed" },

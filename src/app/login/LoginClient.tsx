@@ -20,6 +20,7 @@ export default function LoginClient({ initialNext }: { initialNext: string | nul
   setLoading(true);
 
   try {
+    console.log("Submitting login with email:", email);
     const res = await fetch("/api/auth/login", {
       method: "POST",
       redirect: "manual", // IMPORTANT: allow us to read Location for 302/303
@@ -27,9 +28,12 @@ export default function LoginClient({ initialNext }: { initialNext: string | nul
       body: JSON.stringify({ email, password, mode: "cookie", next: initialNext }),
     });
 
+    console.log("Login API response status:", res.status);
+
     // If the API returns a redirect (recommended for auth flows)
     if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
       const loc = res.headers.get("location") || "/";
+      console.log("Got redirect:", loc);
       router.replace(loc);
       router.refresh();
       return;
@@ -37,17 +41,22 @@ export default function LoginClient({ initialNext }: { initialNext: string | nul
 
     // Otherwise expect JSON
     const data = await res.json().catch(() => ({}));
+    console.log("Login API response data:", data);
 
     if (!res.ok || !data?.ok) {
       setError(data?.error ?? "Autentificare eșuată. Verifică datele și încearcă din nou.");
+      console.log("Login failed:", data?.error);
       return;
     }
 
     // Prefer server-decided redirect (DB routing), fallback to initialNext
     const redirectTo = data.redirectTo ?? initialNext ?? "/";
-    router.replace(redirectTo);
-    router.refresh();
-  } catch {
+    console.log("Login success, redirecting to:", redirectTo);
+
+    // Use window.location for a hard page reload to ensure cookies are read
+    window.location.href = redirectTo;
+  } catch (err) {
+    console.error("Login error:", err);
     setError("A apărut o eroare la conectare. Încearcă din nou.");
   } finally {
     setLoading(false);

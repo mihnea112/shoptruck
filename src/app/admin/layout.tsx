@@ -404,6 +404,52 @@ export default async function AdminLayout({
                 ) : null}
               </NavGroup>
 
+              {/* MARKETING */}
+              {isAdmin ? (
+                <NavGroup title="Marketing" defaultOpen={false}>
+                  <NavItem
+                    href="/admin/email/campaigns"
+                    label="Campanii Email"
+                    description="Cree și trimite campaniile de email"
+                    icon={
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="h-5 w-5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <rect x="2" y="4" width="20" height="16" rx="2" />
+                        <path d="M22 4l-10 8L2 4" />
+                      </svg>
+                    }
+                  />
+                  <NavItem
+                    href="/admin/email/contacts"
+                    label="Contacte Email"
+                    description="Gestionează lista de contacte"
+                    icon={
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="h-5 w-5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                    }
+                  />
+                </NavGroup>
+              ) : null}
+
               {/* Management */}
               {isAdmin ? (
                 <NavGroup title="Management" defaultOpen={false}>

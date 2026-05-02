@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { sql } from "@/lib/db";
+import { createServerClient } from "@supabase/ssr";
 
 function sameOriginCheck(req: Request) {
   if (process.env.NODE_ENV !== "production") return true;
@@ -24,7 +24,6 @@ function safeNext(req: Request) {
     const url = new URL(req.url);
     const next = (url.searchParams.get("next") || "/").trim();
     if (!next.startsWith("/")) return "/";
-    // prevent protocol-relative (//evil.com)
     if (next.startsWith("//")) return "/";
     return next;
   } catch {
@@ -46,7 +45,6 @@ function htmlLogoutRedirect(nextPath: string) {
   <script>
     try { localStorage.clear(); } catch (e) {}
     try { sessionStorage.clear(); } catch (e) {}
-    // in case your app stores extra keys under specific names, add them here
     window.location.replace(${JSON.stringify(nextPath)});
   </script>
   <noscript>
@@ -67,26 +65,36 @@ function htmlLogoutRedirect(nextPath: string) {
 
 async function performLogout() {
   const c = await cookies();
-  const token = c.get("session")?.value || "";
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Clear cookie regardless (idempotent)
-  c.set("session", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    expires: new Date(0),
-  });
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      cookies: {
+        getAll() {
+          return c.getAll();
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value, options } of cookiesToSet) {
+            c.set(name, value, options);
+          }
+        },
+      },
+    });
 
-  // Best-effort DB cleanup
-  if (token) {
-    try {
-      // If your DB stores a hashed token, adapt this to your hashing strategy.
-      // For now we delete by token_hash assuming it matches the cookie value.
-      await sql`DELETE FROM session WHERE token_hash = ${token}`;
-    } catch (err) {
-      console.error("[auth/logout] failed to delete session", err);
-    }
+    // Sign out from Supabase
+    await supabase.auth.signOut();
+  }
+
+  // Clear all auth-related cookies manually to be sure
+  const cookieNames = [
+    "sb-access-token",
+    "sb-refresh-token",
+    "sb-auth-token",
+  ];
+
+  for (const name of cookieNames) {
+    c.delete(name);
   }
 }
 

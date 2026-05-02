@@ -184,8 +184,33 @@ export async function POST(req: Request) {
 
     supabaseUserId = signUpData.user.id;
 
-    // Profile will be created on first login or by admins
-    // getSessionUser() handles missing profiles gracefully
+    // Create profile entry (customers have empty roles, only staff/admin have roles)
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { error: profileError } = await supabaseAdmin
+      .from("profile")
+      .insert({
+        user_id: supabaseUserId,
+        email,
+        full_name: kind === "individual" ? displayName : null,
+        roles: [],
+        is_active: true,
+        kind: accountKind.toLowerCase(),
+        display_name: displayName,
+        legal_name: legalName,
+        phone,
+        tax_id: taxId,
+        reg_no: regNo,
+        notes,
+      });
+
+    if (profileError) {
+      console.error("Profile creation error:", profileError);
+      // Clean up user if profile creation failed
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
+      } catch {}
+      return json({ ok: false, error: "Eroare la crearea profilului. Încearcă din nou." }, 500);
+    }
 
     // After registration, redirect to login so user can authenticate with Supabase
     const redirectTo = "/login";

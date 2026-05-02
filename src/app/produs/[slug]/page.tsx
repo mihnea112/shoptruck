@@ -2,12 +2,23 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
+import { ProductActions } from "@/components/product/ProductActions";
+import { EquivalentCodesSection } from "@/components/product/EquivalentCodesSection";
+import { SuggestedProductsCarousel } from "@/components/product/SuggestedProductsCarousel";
 
 type PublicImage = {
   storage_path: string;
   url: string | null;
   is_primary: boolean;
   sort_order: number | null;
+};
+
+type DbCode = {
+  code_raw: string;
+  code_norm: string;
+  is_primary: boolean;
+  code_kind?: string;
+  note?: string;
 };
 
 type DbProduct = {
@@ -23,6 +34,8 @@ type DbProduct = {
   category_name: string | null;
 
   primary_code: string | null;
+  equivalent_codes?: string[];
+  all_codes?: DbCode[];
 
   price_gross: number | null;
 
@@ -77,8 +90,10 @@ async function getProductBySlug(slug: string): Promise<DbProduct | null> {
 
   const item = data.item;
   if (!item) return null;
-  // Attach warehouses to the product object for use in the page
+  // Attach warehouses and related products to the product object for use in the page
   (item as any)._warehouses = data.warehouses ?? [];
+  (item as any)._relatedProducts = data.relatedProducts ?? [];
+  (item as any)._suggestedProducts = data.suggestedProducts ?? [];
   return item as DbProduct;
 }
 
@@ -90,11 +105,22 @@ type WarehouseStock = {
   stock_on_hand: number;
 };
 
+type RelatedProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  brand_name: string | null;
+  price_gross: number;
+  image_url: string | null;
+};
+
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
 
   const product = await getProductBySlug(slug);
   const warehouseStock: WarehouseStock[] = (product as any)?._warehouses ?? [];
+  const relatedProducts: RelatedProduct[] = (product as any)?._relatedProducts ?? [];
+  const suggestedProducts: RelatedProduct[] = (product as any)?._suggestedProducts ?? [];
 
   if (!product) {
     return (
@@ -223,7 +249,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   </div>
                 ) : null}
 
-                <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-xs text-slate-600 md:grid-cols-3">
+                <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-xs text-slate-600 md:grid-cols-2">
                   <div className="space-y-1">
                     <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
                       Brand
@@ -240,24 +266,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       {category}
                     </div>
                   </div>
-
-                  {product.primary_code ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                        Cod OEM (referință)
-                      </div>
-                      <div className="text-[11px] font-mono text-slate-800">
-                        {product.primary_code}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                        Cod OEM (referință)
-                      </div>
-                      <div className="text-[11px] text-slate-500">—</div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -267,7 +275,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">
                     {product.name}
                   </h1>
-                  <p className="text-sm text-slate-600 max-w-xl">{short}</p>
+                  <p>Cod Produs: {product.primary_code}</p>
                 </div>
 
                 {/* Price block */}
@@ -318,16 +326,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   </div>
 
                   {/* Actions */}
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <button
-                      className="flex-1 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:bg-slate-400"
-                      disabled={!inStock}
-                    >
-                      Adaugă în coș
-                    </button>
-                    <button className="flex-1 rounded-full border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 hover:border-[#feab1f] hover:text-[#feab1f] transition">
-                      Comandă pe WhatsApp
-                    </button>
+                  <div className="mt-3">
+                    <ProductActions
+                      productId={product.id}
+                      productName={product.name}
+                      productSlug={product.slug}
+                      inStock={inStock}
+                    />
                   </div>
                 </div>
 
@@ -402,37 +407,116 @@ export default async function ProductPage({ params }: ProductPageProps) {
             </div>
 
             {/* Description / details */}
-            <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div className="mt-10 space-y-8">
               <div className="space-y-3">
-                <h2 className="text-base font-semibold text-slate-900">
+                <h2 className="text-lg font-semibold text-slate-900">
                   Descriere detaliată
                 </h2>
-                <p className="text-sm leading-relaxed text-slate-700">
-                  {description}
-                </p>
+                <div className="prose prose-sm max-w-none rounded-2xl border border-slate-200 bg-white px-6 py-5">
+                  <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                    {description}
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
                 <h3 className="text-sm font-semibold text-slate-900">
-                  Recomandări de montaj
+                  Informații suplimentare
                 </h3>
-                <ul className="space-y-1 text-xs">
-                  <li>
-                    • Se recomandă montajul într-un service autorizat și
-                    folosirea de scule adecvate.
+                <ul className="space-y-2 text-xs">
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-slate-600 min-w-fit">
+                      Cod primar:
+                    </span>
+                    <span className="font-mono text-slate-800">
+                      {product.primary_code || "—"}
+                    </span>
                   </li>
-                  <li>
-                    • Verifică întotdeauna compatibilitatea pe seria de șasiu
-                    înainte de montaj.
+                  {product.equivalent_codes &&
+                    product.equivalent_codes.length > 0 && (
+                      <li className="flex gap-2">
+                        <span className="font-semibold text-slate-600 min-w-fit">
+                          Coduri echivalente:
+                        </span>
+                        <span className="font-mono text-slate-800">
+                          {product.equivalent_codes.join(", ")}
+                        </span>
+                      </li>
+                    )}
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-slate-600 min-w-fit">
+                      Marca:
+                    </span>
+                    <span>{brand}</span>
                   </li>
-                  <li>
-                    • Pentru rezultate optime, se recomandă înlocuirea în set.
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-slate-600 min-w-fit">
+                      Categoria:
+                    </span>
+                    <span>{category}</span>
                   </li>
                 </ul>
               </div>
             </div>
+
+            {/* Full-Width Equivalent Codes Section */}
+            <EquivalentCodesSection codes={product.equivalent_codes || []} />
+
+            {/* You Might Also Like Section (Suggested Products Carousel) */}
+            {suggestedProducts.length > 0 && (
+              <SuggestedProductsCarousel products={suggestedProducts} />
+            )}
           </div>
         </section>
+
+        {/* Related Products Section */}
+        {relatedProducts.length > 0 && (
+          <section className="border-t border-slate-200 bg-white">
+            <div className="w-full px-6 py-10 lg:px-10 xl:px-16">
+              <h2 className="mb-8 text-2xl font-semibold text-slate-900">
+                Produse cu coduri echivalente
+              </h2>
+              <div className="grid gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {relatedProducts.map((relProd) => (
+                  <Link
+                    key={relProd.id}
+                    href={`/produs/${relProd.slug}`}
+                    className="group rounded-xl border border-slate-200 overflow-hidden bg-white hover:shadow-lg transition"
+                  >
+                    <div className="aspect-square bg-slate-100 overflow-hidden">
+                      {relProd.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={relProd.image_url}
+                          alt={relProd.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400">
+                          Fără imagine
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <h3 className="mb-2 line-clamp-2 text-sm font-medium text-slate-900 group-hover:text-slate-700">
+                        {relProd.name}
+                      </h3>
+                      {relProd.brand_name && (
+                        <p className="text-xs text-slate-500 mb-2">
+                          {relProd.brand_name}
+                        </p>
+                      )}
+                      <div className="text-sm font-semibold text-slate-900">
+                        {formatRON(relProd.price_gross)}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       <MainFooter />
