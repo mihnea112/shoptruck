@@ -191,6 +191,11 @@ export default async function AdminHomePage() {
               title="Comenzi"
               desc="Vizualizare și procesare comenzi (pas următor)."
             />
+            <QuickAction
+              href="/admin/email/campaigns"
+              title="Campanii Email"
+              desc="Creează și monitorizează campanii de marketing prin email."
+            />
             {isAdmin ? (
               <QuickAction
                 href="/admin/agenti"
