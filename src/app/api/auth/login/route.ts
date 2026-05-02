@@ -6,7 +6,10 @@ import { createServerClient } from "@supabase/ssr";
 // ... keep your helpers (sameOriginCheck, normalize, etc.)
 
 export async function POST(req: Request) {
-  // ... keep your validations up to signInWithPassword
+  const body = await req.json().catch(() => null);
+  const email = String(body?.email ?? "").trim().toLowerCase();
+  const password = String(body?.password ?? "");
+  const mode = String(body?.mode ?? "cookie").toLowerCase();
 
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -32,11 +35,6 @@ export async function POST(req: Request) {
       },
     },
   });
-
-  const body = await req.json().catch(() => null);
-  const email = String(body?.email ?? "").trim().toLowerCase();
-  const password = String(body?.password ?? "");
-  const mode = String(body?.mode ?? "cookie").toLowerCase();
 
   const { data, error: signInError } = await supabase.auth.signInWithPassword({
     email,

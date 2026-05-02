@@ -1,9 +1,6 @@
 // src/app/api/auth/register/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import argon2 from "argon2";
-import { sql } from "@/lib/db";
-import { newSessionToken, hashToken } from "@/lib/auth/crypto";
+import { createClient } from "@supabase/supabase-js";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -68,20 +65,7 @@ type RegisterBody =
       contactEmail?: string;
     };
 
-type UserRow = {
-  id: string;
-  email: string;
-  kind: "staff" | "customer";
-  roles: string[] | null;
-};
 
-function computeRedirect(userKind: string, roles: string[] | null) {
-  const r = roles ?? [];
-  const isStaff = userKind === "staff";
-  const isAdminOrSales = r.includes("ADMIN") || r.includes("SALES_REP");
-  if (isStaff && isAdminOrSales) return "/admin";
-  return "/";
-}
 
 export async function POST(req: Request) {
   const ct = req.headers.get("content-type") || "";
@@ -113,20 +97,14 @@ export async function POST(req: Request) {
     return json({ ok: false, error: "Tip cont invalid." }, 400);
   }
 
-  // Optional cleanup
-  // If you haven't created session table yet, remove this line.
-  await sql`DELETE FROM session WHERE expires_at < now()`;
-
-  // Ensure email not already used
-  const existing = await sql`
-    SELECT 1
-    FROM app_user
-    WHERE lower(email) = ${email}
-    LIMIT 1
-  `;
-  if (Array.isArray(existing) && existing.length > 0) {
-    return json({ ok: false, error: "Există deja un cont cu acest email." }, 409);
+  // Verify Supabase config
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return json({ ok: false, error: "Configurare Supabase invalidă." }, 500);
   }
+
+  // Email uniqueness is handled by Supabase auth
 
   // Build account payload
   let accountKind: "INDIVIDUAL" | "COMPANY";
@@ -177,110 +155,59 @@ export async function POST(req: Request) {
     accountEmail = contactEmailOk ? contactEmailRaw : email;
   }
 
+  let supabaseUserId: string | null = null;
+
   try {
-    const passwordHash = await argon2.hash(password);
-
-    const token = newSessionToken();
-    const tokenHash = hashToken(token);
-    const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
-
-    const rows = await sql`
-      WITH a AS (
-        INSERT INTO account (
-          kind, display_name, legal_name, email, phone,
-          tax_id, reg_no, notes
-        )
-        VALUES (
-          ${accountKind},
-          ${displayName},
-          ${legalName},
-          ${accountEmail},
-          ${phone},
-          ${taxId},
-          ${regNo},
-          ${notes}
-        )
-        RETURNING id
-      ),
-      u AS (
-        INSERT INTO app_user (
-          email, password_hash, kind, is_active, account_id
-        )
-        VALUES (
-          ${email},
-          ${passwordHash},
-          'customer',
-          true,
-          (SELECT id FROM a)
-        )
-        RETURNING id
-      ),
-      s AS (
-        INSERT INTO session (user_id, token_hash, expires_at)
-        VALUES ((SELECT id FROM u), ${tokenHash}, ${expires.toISOString()})
-        RETURNING id
-      )
-      SELECT (SELECT id FROM u) AS user_id
-    `;
-
-    const userId = (rows as any[])?.[0]?.user_id as string | undefined;
-    if (!userId) return json({ ok: false, error: "Eroare internă." }, 500);
-
-    // Load kind + roles (roles likely empty for customers)
-    const uinfo = (await sql`
-      SELECT
-        u.id,
-        u.email,
-        u.kind,
-        COALESCE(array_agg(r.key) FILTER (WHERE r.key IS NOT NULL), '{}') AS roles
-      FROM app_user u
-      LEFT JOIN user_role ur ON ur.user_id = u.id
-      LEFT JOIN role r ON r.id = ur.role_id
-      WHERE u.id = ${userId}::uuid
-      GROUP BY u.id
-      LIMIT 1
-    `) as UserRow[];
-
-    const user = uinfo?.[0];
-    const roles = user?.roles ?? [];
-    const redirectTo = computeRedirect(user?.kind ?? "customer", roles);
-
-    if (mode === "cookie" || mode === "both") {
-      const c = await cookies();
-      c.set("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        expires,
-      });
+    // 1. Create user in Supabase auth first using regular signup
+    const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!SUPABASE_ANON_KEY) {
+      return json({ ok: false, error: "Configurare Supabase invalidă." }, 500);
     }
 
-    const userSafe = user
-      ? { id: user.id, email: user.email, kind: user.kind, roles }
-      : { id: userId, email, kind: "customer" as const, roles: [] };
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    if (mode === "token") {
-      return json({
-        ok: true,
-        token,
-        expiresAt: expires.toISOString(),
-        redirectTo,
-        user: userSafe,
-      });
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${SUPABASE_URL.split('?')[0]}/api/auth/callback`,
+      },
+    });
+
+    if (signUpError || !signUpData?.user?.id) {
+      console.error("Supabase signup error:", signUpError);
+      const msg = signUpError?.message?.includes("already exists")
+        ? "Există deja un cont cu acest email."
+        : "Eroare la crearea contului. Încearcă din nou.";
+      return json({ ok: false, error: msg }, signUpError?.status || 500);
     }
+
+    supabaseUserId = signUpData.user.id;
+
+    // Profile will be created on first login or by admins
+    // getSessionUser() handles missing profiles gracefully
+
+    // After registration, redirect to login so user can authenticate with Supabase
+    const redirectTo = "/login";
+    const userId = supabaseUserId;
+    const roles: string[] = [];
+
+    const userSafe = { id: userId, email, kind: "customer" as const, roles };
 
     return json({
       ok: true,
       redirectTo,
       user: userSafe,
-      ...(mode === "both" ? { token, expiresAt: expires.toISOString() } : {}),
     });
   } catch (e: any) {
-    const msg =
-      e?.code === "23505"
-        ? "Date duplicate (email/CUI). Verifică și încearcă din nou."
-        : "Eroare internă.";
-    return json({ ok: false, error: msg }, 500);
+    // If Supabase user creation succeeded but profile creation failed, clean up
+    if (supabaseUserId) {
+      try {
+        const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
+      } catch {}
+    }
+    console.error("Register error:", e);
+    return json({ ok: false, error: "Eroare internă." }, 500);
   }
 }

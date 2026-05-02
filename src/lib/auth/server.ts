@@ -47,17 +47,28 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const u = userData.user;
 
   // 2) load profile (Option A)
-  const { data: profile, error: profileErr } = await supabase
-    .from("profile")
-    .select("user_id, roles, is_active, default_route")
-    .eq("user_id", u.id)
-    .maybeSingle();
+  let profile: any = null;
+  try {
+    const result = await supabase
+      .from("profile")
+      .select("user_id, roles, is_active, default_route")
+      .eq("user_id", u.id)
+      .maybeSingle();
 
-  if (profileErr) return null;
+    if (result.error) {
+      // Profile table might not exist, that's ok for new users
+      profile = null;
+    } else {
+      profile = result.data;
+    }
+  } catch {
+    // Profile table doesn't exist, use default
+    profile = null;
+  }
 
   // If profile missing => customer
-  const roles = normalizeRoles((profile as any)?.roles ?? []);
-  const isActive = (profile as any)?.is_active;
+  const roles = normalizeRoles(profile?.roles ?? []);
+  const isActive = profile?.is_active;
 
   if (isActive === false) return null;
 
@@ -68,7 +79,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     email: u.email ?? "",
     kind,
     roles,
-    defaultRoute: (profile as any)?.default_route ?? null,
+    defaultRoute: profile?.default_route ?? null,
   };
 }
 
