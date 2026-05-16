@@ -418,45 +418,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   </p>
                 </div>
               </div>
-
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-                <h3 className="text-sm font-semibold text-slate-900">
-                  Informații suplimentare
-                </h3>
-                <ul className="space-y-2 text-xs">
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-slate-600 min-w-fit">
-                      Cod primar:
-                    </span>
-                    <span className="font-mono text-slate-800">
-                      {product.primary_code || "—"}
-                    </span>
-                  </li>
-                  {product.equivalent_codes &&
-                    product.equivalent_codes.length > 0 && (
-                      <li className="flex gap-2">
-                        <span className="font-semibold text-slate-600 min-w-fit">
-                          Coduri echivalente:
-                        </span>
-                        <span className="font-mono text-slate-800">
-                          {product.equivalent_codes.join(", ")}
-                        </span>
-                      </li>
-                    )}
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-slate-600 min-w-fit">
-                      Marca:
-                    </span>
-                    <span>{brand}</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-slate-600 min-w-fit">
-                      Categoria:
-                    </span>
-                    <span>{category}</span>
-                  </li>
-                </ul>
-              </div>
             </div>
 
             {/* Full-Width Equivalent Codes Section */}

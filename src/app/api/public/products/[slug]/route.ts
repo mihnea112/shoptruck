@@ -50,7 +50,7 @@ export async function GET(
       b.name AS brand_name,
       c.name AS category_name,
 
-      pc_primary.code_norm AS primary_code,
+      pc_primary.code_id AS primary_code,
 
       img.primary_image_path,
       img.images_json,
@@ -63,9 +63,8 @@ export async function GET(
     LEFT JOIN category c ON c.id = p.category_id
 
     LEFT JOIN LATERAL (
-      SELECT pc.code_norm
+      SELECT j.code_id
       FROM product_code j
-      JOIN part_code pc ON pc.id = j.code_id
       WHERE j.product_id = p.id AND j.is_primary = true
       LIMIT 1
     ) pc_primary ON true
@@ -100,18 +99,15 @@ export async function GET(
         COALESCE(
           jsonb_agg(
             jsonb_build_object(
-              'code_raw', pc.code_raw,
-              'code_norm', pc.code_norm,
+              'code', prc.code_id,
               'is_primary', prc.is_primary,
-              'code_kind', prc.code_kind,
-              'note', prc.note
+              'code_kind', prc.code_kind
             )
-            ORDER BY prc.is_primary DESC, pc.code_norm ASC
-          ) FILTER (WHERE pc.id IS NOT NULL),
+            ORDER BY prc.is_primary DESC, prc.code_id ASC
+          ) FILTER (WHERE prc.code_id IS NOT NULL),
           '[]'::jsonb
         ) AS all_codes_json
       FROM product_code prc
-      JOIN part_code pc ON pc.id = prc.code_id
       WHERE prc.product_id = p.id
     ) codes ON true
 
@@ -138,9 +134,8 @@ export async function GET(
       SELECT id, slug, brand_id, category_id FROM product WHERE slug = $1 LIMIT 1
     ),
     current_codes AS (
-      SELECT DISTINCT pc.code_norm
+      SELECT DISTINCT prc.code_id
       FROM product_code prc
-      JOIN part_code pc ON pc.id = prc.code_id
       WHERE prc.product_id = (SELECT id FROM current_product)
     )
     SELECT DISTINCT ON (p.id)
@@ -156,9 +151,8 @@ export async function GET(
       CASE
         WHEN EXISTS (
           SELECT 1 FROM product_code prc2
-          JOIN part_code pc ON pc.id = prc2.code_id
           WHERE prc2.product_id = p.id
-            AND pc.code_norm IN (SELECT code_norm FROM current_codes)
+            AND prc2.code_id IN (SELECT code_id FROM current_codes)
         ) THEN 1
         ELSE 2
       END AS match_priority
@@ -172,9 +166,8 @@ export async function GET(
         -- Match 1: Products with same codes
         EXISTS (
           SELECT 1 FROM product_code prc2
-          JOIN part_code pc ON pc.id = prc2.code_id
           WHERE prc2.product_id = p.id
-            AND pc.code_norm IN (SELECT code_norm FROM current_codes)
+            AND prc2.code_id IN (SELECT code_id FROM current_codes)
         )
         OR
         -- Match 2: Products in same category or brand
@@ -279,7 +272,7 @@ export async function GET(
     const codesArr = Array.isArray(codesJson) ? codesJson : [];
     const equivalentCodes = codesArr
       .filter((c: any) => !c.is_primary)
-      .map((c: any) => c.code_norm);
+      .map((c: any) => c.code);
 
     const item = {
       id: r.id,

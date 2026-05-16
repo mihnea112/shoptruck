@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireStaff } from "@/lib/auth/api";
-import { sendEmail } from "@/lib/email/sender";
+import { sendBrevoEmail } from "@/lib/email/sender";
 import {
   injectUnsubscribeLink,
   stripHtmlToText,
@@ -38,10 +38,12 @@ export async function POST(
 
     const campaignData = campaign[0];
 
-    if (campaignData.status !== "draft") {
+    // Allow sending for draft campaigns (initial send) or sent campaigns (resend)
+    const allowedStatuses = ["draft", "sent"];
+    if (!allowedStatuses.includes(campaignData.status)) {
       return json({
         ok: false,
-        error: "Campanie nu este în draft. Poate fi deja în trimitere sau trimisă.",
+        error: "Campanie nu poate fi trimisă. Doar campaniile în draft sau deja trimise pot fi trimise/retrimise.",
       }, 400);
     }
 
@@ -80,8 +82,8 @@ export async function POST(
 
         const textBody = stripHtmlToText(htmlWithUnsubscribe);
 
-        // Send email
-        await sendEmail({
+        // Send email via Brevo (marketing campaign)
+        await sendBrevoEmail({
           to: contact.email,
           subject: campaignData.subject,
           html: htmlWithUnsubscribe,

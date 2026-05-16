@@ -33,7 +33,7 @@ export async function GET(req: Request) {
 
   if (q) {
     where.push(
-      `(p.name ILIKE $${idx} OR p.sku ILIKE $${idx} OR COALESCE(b.name,'') ILIKE $${idx} OR COALESCE(pc_primary.code_norm,'') ILIKE $${idx})`,
+      `(p.name ILIKE $${idx} OR p.sku ILIKE $${idx} OR COALESCE(b.name,'') ILIKE $${idx} OR COALESCE(pc_primary.code_id,'') ILIKE $${idx})`,
     );
     values.push(`%${q}%`);
     idx++;
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
       COALESCE(c.name,'') AS category_name,
       b.id AS brand_id,
       c.id AS category_id,
-      pc_primary.code_norm AS primary_code,
+      pc_primary.code_id AS primary_code,
       img.primary_image_path,
       CEIL(p.buy_price_net * (1 + p.profit_margin_pct/100.0) *
         (1 + CASE WHEN tr.rate <= 1 THEN tr.rate ELSE tr.rate/100 END)) AS sell_gross,
@@ -80,8 +80,7 @@ export async function GET(req: Request) {
     LEFT JOIN brand b    ON b.id = p.brand_id
     LEFT JOIN category c ON c.id = p.category_id
     LEFT JOIN LATERAL (
-      SELECT pc.code_norm FROM product_code j
-      JOIN part_code pc ON pc.id = j.code_id
+      SELECT j.code_id FROM product_code j
       WHERE j.product_id = p.id AND j.is_primary = true LIMIT 1
     ) pc_primary ON true
     LEFT JOIN LATERAL (
@@ -117,6 +116,7 @@ export async function GET(req: Request) {
     }));
     return NextResponse.json({ ok: true, items, total, limit, offset });
   } catch (e: any) {
+    console.error("[API public products]", e);
     return NextResponse.json({ ok: false, error: e?.message }, { status: 500 });
   }
 }

@@ -17,6 +17,7 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.90.1",
     "argon2": "^0.44.0",
+    "fast-xml-parser": "^5.8.0",
     "file-saver": "^2.0.5",
     "next": "16.0.8",
     "next-auth": "^5.0.0-beta.30",
@@ -24,7 +25,8 @@
     "pg": "^8.16.3",
     "postgres": "^3.4.8",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "sib-api-v3-sdk": "^8.5.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

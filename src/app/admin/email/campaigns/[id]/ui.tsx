@@ -224,6 +224,57 @@ export default function CampaignEditorUI({ campaignId, isNew }: CampaignEditorUI
     }
   };
 
+  const handleDelete = async () => {
+    if (!campaign) return;
+    if (!confirm("Sigur doriți să ștergeți această campanie?")) return;
+
+    try {
+      const res = await fetch(`/api/admin/email/campaigns/${campaign.id}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        setMessage({ type: "success", text: "Campanie ștersă cu succes." });
+        setTimeout(() => {
+          router.push("/admin/email/campaigns");
+        }, 1000);
+      } else {
+        setMessage({ type: "error", text: data.error || "Eroare la ștergerea campaniei." });
+      }
+    } catch (error: any) {
+      setMessage({ type: "error", text: error?.message || "Eroare la ștergerea campaniei." });
+    }
+  };
+
+  const handleResend = async () => {
+    if (!campaign) return;
+    if (!confirm(`Retrimiteți campania la ${contactCount} contacte?`)) return;
+
+    setSending(true);
+
+    try {
+      const res = await fetch(`/api/admin/email/campaigns/${campaign.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        setMessage({ type: "success", text: "Campanie retrimisă! Procesarea va continua în fundal." });
+        loadCampaign();
+      } else {
+        setMessage({ type: "error", text: data.error || "Eroare la retrimisione." });
+      }
+    } catch (error: any) {
+      setMessage({ type: "error", text: error?.message || "Eroare la retrimisione." });
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -442,6 +493,35 @@ export default function CampaignEditorUI({ campaignId, isNew }: CampaignEditorUI
             </div>
           )}
 
+          {/* Resend Options (for sent campaigns) */}
+          {!isNew && campaign && campaign.status === "sent" && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <h2 className="text-lg font-bold text-slate-900 mb-4">Retrimisiune</h2>
+
+              <div className="mb-4">
+                <p className="text-sm text-slate-600 mb-4">
+                  Trimise: <span className="font-bold text-green-600">{campaign.sent_count}</span> |
+                  Eșecuri: <span className="font-bold text-red-600">{campaign.failed_count}</span>
+                </p>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={sending}
+                    className="rounded-xl bg-amber-600 px-6 py-2 font-semibold text-white transition disabled:opacity-50 hover:bg-amber-700"
+                  >
+                    {sending ? "Retrimisiune..." : "Retrimite campania"}
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500 mt-3">
+                  Retrimite campania la toți contactele active. Statisticile anterioare vor fi resetate.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Save Button */}
           {isEditable && (
             <div className="flex gap-2">
@@ -457,6 +537,25 @@ export default function CampaignEditorUI({ campaignId, isNew }: CampaignEditorUI
                 className="flex-1 rounded-xl bg-amber-400 px-6 py-2 font-semibold text-slate-900 transition disabled:opacity-50 hover:bg-amber-500"
               >
                 {saving ? "Salvează..." : "Salvează"}
+              </button>
+            </div>
+          )}
+
+          {/* Delete Button (only when all emails are completely sent with no failures) */}
+          {campaign && campaign.status === "sent" && campaign.failed_count === 0 && (
+            <div className="flex gap-2">
+              <Link
+                href="/admin/email/campaigns"
+                className="flex-1 rounded-xl border border-slate-300 bg-white px-6 py-2 text-center font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Înapoi
+              </Link>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex-1 rounded-xl border border-red-300 bg-red-50 px-6 py-2 font-semibold text-red-700 transition hover:bg-red-100"
+              >
+                Șterge campanie
               </button>
             </div>
           )}

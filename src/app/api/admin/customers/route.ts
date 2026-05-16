@@ -121,6 +121,16 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "Numele clientului este obligatoriu." }, 400);
     }
 
+    if (!email) {
+      return json({ ok: false, error: "Adresa de email este obligatorie." }, 400);
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return json({ ok: false, error: "Adresa de email nu este validă." }, 400);
+    }
+
     // For INDIVIDUAL: legal_name optional; for COMPANY: legal_name defaults to display_name
     const finalLegalName = kind === "COMPANY" ? (legalName ?? displayName) : legalName;
 

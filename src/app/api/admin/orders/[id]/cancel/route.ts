@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
 import { requireStaff } from "@/lib/auth/api";
+import { sendOrderStatusEmail } from "@/lib/email/order-emails";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -42,6 +43,10 @@ export async function POST(
     );
 
     await client.query("COMMIT");
+
+    // Send cancellation notification email
+    await sendOrderStatusEmail(pool, id, "cancelled");
+
     return NextResponse.json({ ok: true, result: rows[0]?.result ?? null });
   } catch (e: any) {
     try {

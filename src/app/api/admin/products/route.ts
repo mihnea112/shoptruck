@@ -167,7 +167,7 @@ export async function GET(req: Request) {
           (1 + (p.profit_margin_pct / 100.0)) *
           (1 + COALESCE(tr.rate, 0))
         )::numeric(12,2) AS price_gross,
-        pc_primary.code_norm AS primary_code,
+        pc_primary.code_id AS primary_code,
         COALESCE(pc_stats.equivalents_count, 0)::int AS equivalents_count
       FROM product p
       LEFT JOIN brand b ON b.id = p.brand_id
@@ -175,9 +175,8 @@ export async function GET(req: Request) {
       LEFT JOIN tax_rate tr ON tr.id = p.tax_rate_id
       LEFT JOIN profile pr_creator ON pr_creator.user_id = p.created_by_user_id
       LEFT JOIN LATERAL (
-        SELECT pc.code_norm
+        SELECT j.code_id
         FROM product_code j
-        JOIN part_code pc ON pc.id = j.code_id
         WHERE j.product_id = p.id AND j.is_primary = true
         LIMIT 1
       ) pc_primary ON true

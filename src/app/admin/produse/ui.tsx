@@ -760,12 +760,20 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           </button>
 
           {isAdmin ? (
-            <button
-              onClick={openCreate}
-              className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
-            >
-              Adaugă produs
-            </button>
+            <>
+              <button
+                onClick={openCreate}
+                className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+              >
+                Adaugă produs
+              </button>
+              <a
+                href="/admin/import"
+                className="rounded-full bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 transition inline-block"
+              >
+                Import XML
+              </a>
+            </>
           ) : null}
         </div>
       </div>

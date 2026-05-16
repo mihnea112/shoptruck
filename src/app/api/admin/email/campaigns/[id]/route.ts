@@ -193,16 +193,24 @@ export async function DELETE(
       return json({ ok: false, error: "ID invalid." }, 400);
     }
 
-    // Check campaign exists and is draft
-    const campaign = await sql`SELECT status FROM campaign WHERE id = ${campaignId}`;
+    // Check campaign exists and get full details
+    const campaign = await sql`SELECT status, failed_count FROM campaign WHERE id = ${campaignId}`;
     if (campaign.length === 0) {
       return json({ ok: false, error: "Campanie nu găsită." }, 404);
     }
 
-    if (campaign[0].status !== "draft") {
+    // Allow deletion only for:
+    // 1. Draft campaigns (status = "draft"), OR
+    // 2. Sent campaigns with zero failures (status = "sent" AND failed_count = 0)
+    const status = campaign[0].status;
+    const failedCount = campaign[0].failed_count || 0;
+
+    const canDelete = status === "draft" || (status === "sent" && failedCount === 0);
+
+    if (!canDelete) {
       return json({
         ok: false,
-        error: "Nu poți șterge campanii care sunt în trimitere sau deja trimise.",
+        error: "Nu poți șterge campanii care sunt în trimitere sau cu trimiteri eșuate. Doar campaniile complet trimise fără erori pot fi șterse.",
       }, 400);
     }
 

@@ -108,16 +108,14 @@ export async function GET(req: Request, ctx: Ctx) {
   const codeRows = await sql`
     SELECT
       j.id,
-      pc.code_raw,
-      pc.code_norm,
+      j.code_id AS code,
       j.is_primary,
       j.code_kind,
       j.note,
       j.created_at
     FROM product_code j
-    JOIN part_code pc ON pc.id = j.code_id
     WHERE j.product_id = ${id}::uuid
-    ORDER BY j.is_primary DESC, pc.code_norm ASC
+    ORDER BY j.is_primary DESC, j.code_id ASC
   `;
 
   const codes = (codeRows as any[]) || [];
@@ -127,14 +125,12 @@ export async function GET(req: Request, ctx: Ctx) {
   const skuNorm = normalizePartCode(p.sku)?.code_norm ?? null;
   const primaryRow = codes.find((c) => c.is_primary);
 
-  const primary_code =
-    String(p.sku || "").trim() ||
-    (primaryRow?.code_raw ?? primaryRow?.code_norm ?? null);
-  const primary_code_normalized = skuNorm ?? (primaryRow?.code_norm ?? null);
+  const primary_code = String(p.sku || "").trim() || (primaryRow?.code ?? null);
+  const primary_code_normalized = skuNorm ?? (primaryRow?.code ? normalizePartCode(primaryRow.code)?.code_norm : null);
 
   const equivalent_codes = codes
     .filter((c) => !c.is_primary)
-    .map((c) => String(c.code_norm));
+    .map((c) => String(c.code));
 
   const categoryId = p.category_id ? String(p.category_id) : null;
 
@@ -149,8 +145,8 @@ export async function GET(req: Request, ctx: Ctx) {
       equivalent_codes,
       codes: codes.map((c) => ({
         id: c.id,
-        code: c.code_norm,
-        code_normalized: c.code_norm,
+        code: c.code,
+        code_normalized: normalizePartCode(c.code)?.code_norm ?? c.code,
         code_type: c.code_kind,
         is_primary: c.is_primary,
         note: c.note ?? null,
@@ -340,42 +336,37 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     if (hasEquivsField) {
       // Full sync: primary + equivalents
+      const codesToSync = uniq.map((x) => ({
+        code_id: x.code_norm, // Store the normalized code as code_id
+        is_primary: x.code_norm === primaryNorm.code_norm,
+      }));
+
+      const codesJsonb =
+        (sql as any).json ? (sql as any).json(codesToSync) : JSON.stringify(codesToSync);
+
       await sql`
         WITH _ctx AS (
           SELECT set_config('app.user_id', ${actorId}, true)
         ),
         input AS (
           SELECT *
-          FROM jsonb_to_recordset(${inputJsonb}::jsonb)
-            AS t(code_raw text, code_norm text, is_primary boolean)
-        ),
-        upsert_codes AS (
-          INSERT INTO part_code (code_raw, code_norm)
-          SELECT i.code_raw, i.code_norm
-          FROM input i
-          ON CONFLICT (code_norm) DO UPDATE
-            SET code_raw = EXCLUDED.code_raw
-          RETURNING id, code_norm
-        ),
-        selected AS (
-          SELECT pc.id AS code_id, i.is_primary
-          FROM part_code pc
-          JOIN input i ON i.code_norm = pc.code_norm
+          FROM jsonb_to_recordset(${codesJsonb}::jsonb)
+            AS t(code_id text, is_primary boolean)
         ),
         del AS (
           DELETE FROM product_code
           WHERE product_id = ${okId}::uuid
-            AND code_id NOT IN (SELECT code_id FROM selected)
+            AND code_id NOT IN (SELECT code_id FROM input)
           RETURNING 1
         ),
         ins AS (
           INSERT INTO product_code (product_id, code_id, is_primary, code_kind)
           SELECT
             ${okId}::uuid,
-            s.code_id,
-            s.is_primary,
-            CASE WHEN s.is_primary THEN 'PRIMARY' ELSE 'EQUIVALENT' END
-          FROM selected s
+            i.code_id,
+            i.is_primary,
+            CASE WHEN i.is_primary THEN 'PRIMARY' ELSE 'EQUIVALENT' END
+          FROM input i
           ON CONFLICT (product_id, code_id)
           DO UPDATE SET
             is_primary = EXCLUDED.is_primary,
@@ -390,22 +381,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
         WITH _ctx AS (
           SELECT set_config('app.user_id', ${actorId}, true)
         ),
-        upsert_code AS (
-          INSERT INTO part_code (code_raw, code_norm)
-          VALUES (${primaryNorm.code_raw}, ${primaryNorm.code_norm})
-          ON CONFLICT (code_norm) DO UPDATE
-            SET code_raw = EXCLUDED.code_raw
-          RETURNING id
-        ),
-        code_id_sel AS (
-          SELECT id AS code_id FROM upsert_code
-          UNION ALL
-          SELECT id AS code_id FROM part_code WHERE code_norm = ${primaryNorm.code_norm} LIMIT 1
+        ins AS (
+          INSERT INTO product_code (product_id, code_id, is_primary, code_kind)
+          VALUES (${okId}::uuid, ${primaryNorm.code_norm}, true, 'PRIMARY')
+          ON CONFLICT (product_id, code_id)
+          DO UPDATE SET is_primary = true, code_kind = 'PRIMARY'
+          RETURNING 1
         )
-        INSERT INTO product_code (product_id, code_id, is_primary, code_kind)
-        SELECT ${okId}::uuid, (SELECT code_id FROM code_id_sel LIMIT 1), true, 'PRIMARY'
-        ON CONFLICT (product_id, code_id)
-        DO UPDATE SET is_primary = true, code_kind = 'PRIMARY'
+        SELECT 1
       `;
 
       // Ensure no other rows remain marked primary
@@ -417,12 +400,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         SET is_primary = false, code_kind = 'EQUIVALENT'
         WHERE product_id = ${okId}::uuid
           AND is_primary = true
-          AND code_id <> (
-            SELECT pc.id
-            FROM part_code pc
-            WHERE pc.code_norm = ${primaryNorm.code_norm}
-            LIMIT 1
-          )
+          AND code_id <> ${primaryNorm.code_norm}
       `;
     }
 

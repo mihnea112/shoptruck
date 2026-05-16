@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import OfferDownloadButton from "@/components/admin/OfferDownloadButton";
+import SendOfferButton from "@/components/admin/SendOfferButton";
 
 // Helper functions for offer item price/qty calculations
 function num(v: any): number | null {
@@ -471,6 +472,9 @@ export default function OffersListPage() {
                     <div className="flex justify-center gap-2">
                       {/* Generare PDF */}
                       {isClient && <OfferDownloadButton offerId={o.id} />}
+
+                      {/* Trimite prin email */}
+                      {isClient && <SendOfferButton offerId={o.id} />}
 
                       <button
                         onClick={() => openConvert(o.id)}

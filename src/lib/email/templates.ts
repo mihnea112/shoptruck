@@ -291,6 +291,152 @@ Telefon: +40 xxx xxx xxx
   };
 }
 
+// Offer Email Template
+export function offerTemplate(data: {
+  customerName: string;
+  offerId: string;
+  createdDate: string;
+  validUntil?: string;
+  items: Array<{ name: string; quantity: number; unitPrice: number; taxRate: number }>;
+  totalNet: number;
+  totalTax: number;
+  totalGross: number;
+  notes?: string;
+  vehicleInfo?: string;
+}): { subject: string; html: string; text: string } {
+  const itemsHtml = data.items
+    .map((item) => {
+      const lineNet = item.quantity * item.unitPrice;
+      const lineTax = lineNet * item.taxRate;
+      const lineGross = lineNet + lineTax;
+      return `
+    <tr>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+        ${item.name}
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: center;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">
+        ${formatRON(item.unitPrice)}
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">
+        ${(item.taxRate * 100).toFixed(0)}%
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">
+        ${formatRON(lineGross)}
+      </td>
+    </tr>
+  `;
+    })
+    .join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: ${lightBg}; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        ${emailHeader()}
+
+        <div style="padding: 30px;">
+          <h2 style="color: ${darkColor}; margin: 0 0 20px 0;">Ofertă comercială</h2>
+          <p style="color: #64748b; line-height: 1.6; margin: 0;">
+            Bună ${data.customerName},<br><br>
+            Vă suntem plăcuți să vă transmitem oferta noastră conform cerințelor dumneavoastră. Oferta este anexată în format PDF pentru ușurința consultării.
+          </p>
+
+          <div style="background: ${lightBg}; padding: 15px; border-radius: 8px; margin: 25px 0; border-left: 4px solid ${brandColor};">
+            <p style="margin: 0; color: #64748b;">
+              <strong>Numărul ofertei:</strong> ${data.offerId}<br>
+              <strong>Data:</strong> ${data.createdDate}<br>
+              ${data.validUntil ? `<strong>Valabilă până la:</strong> ${data.validUntil}` : ""}
+              ${data.vehicleInfo ? `<br><strong>Vehicle:</strong> ${data.vehicleInfo}` : ""}
+            </p>
+          </div>
+
+          <h3 style="color: ${darkColor}; margin: 25px 0 15px 0;">Detaliile ofertei:</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: ${lightBg};">
+                <th style="padding: 10px; text-align: left; font-weight: bold; color: ${darkColor}; border: 1px solid #e2e8f0;">Produs</th>
+                <th style="padding: 10px; text-align: center; font-weight: bold; color: ${darkColor}; border: 1px solid #e2e8f0;">Cant.</th>
+                <th style="padding: 10px; text-align: right; font-weight: bold; color: ${darkColor}; border: 1px solid #e2e8f0;">Preț Unit.</th>
+                <th style="padding: 10px; text-align: right; font-weight: bold; color: ${darkColor}; border: 1px solid #e2e8f0;">TVA</th>
+                <th style="padding: 10px; text-align: right; font-weight: bold; color: ${darkColor}; border: 1px solid #e2e8f0;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div style="text-align: right; margin: 20px 0; padding: 20px 0; border-top: 2px solid #e2e8f0;">
+            <p style="margin: 5px 0; color: #64748b;">
+              Total net: <strong>${formatRON(data.totalNet)}</strong>
+            </p>
+            <p style="margin: 5px 0; color: #64748b;">
+              TVA: <strong>${formatRON(data.totalTax)}</strong>
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 18px; color: ${darkColor};">
+              Total: <strong>${formatRON(data.totalGross)}</strong>
+            </p>
+          </div>
+
+          ${
+            data.notes
+              ? `<div style="color: #64748b; line-height: 1.6; background: #fff5e6; padding: 15px; border-radius: 8px; margin: 15px 0;"><strong>Observații:</strong> ${data.notes}</div>`
+              : ""
+          }
+
+          <p style="color: #64748b; line-height: 1.6; margin: 25px 0 0 0; font-size: 14px;">
+            <strong>Următorii pași:</strong><br>
+            • Oferta în format PDF este anexată<br>
+            • Vă rugăm să ne confirmați interesul în termen de 5 zile lucrătoare<br>
+            • Pentru clarificări, nu ezitați să ne contactați
+          </p>
+        </div>
+
+        ${emailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+ShopTruck - Ofertă comercială
+
+Bună ${data.customerName},
+
+Vă suntem plăcuți să vă transmitem oferta noastră conform cerințelor dumneavoastră.
+
+Numărul ofertei: ${data.offerId}
+Data: ${data.createdDate}
+${data.validUntil ? `Valabilă până la: ${data.validUntil}` : ""}
+
+--- Detaliile ofertei ---
+${data.items.map((i) => `${i.name} x${i.quantity} @ ${formatRON(i.unitPrice)}: ${formatRON(i.quantity * i.unitPrice * (1 + i.taxRate))}`).join("\n")}
+
+Total net: ${formatRON(data.totalNet)}
+TVA: ${formatRON(data.totalTax)}
+Total: ${formatRON(data.totalGross)}
+
+Oferta în format PDF este anexată.
+
+Contact: contact@shoptruck.ro
+Telefon: +40 xxx xxx xxx
+  `;
+
+  return {
+    subject: `Ofertă comercială - ${data.offerId}`,
+    html,
+    text,
+  };
+}
+
 // Helper function to format RON
 function formatRON(amount: number): string {
   return new Intl.NumberFormat("ro-RO", {
