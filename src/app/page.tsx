@@ -5,10 +5,10 @@ import { MainFooter } from "@/components/layout/MainFooter";
 import { headers } from "next/headers";
 
 const highlights = [
-  "Identificăm piesa după seria de șasiu",
+  "Identificăm produsul după seria de șasiu",
   "Stoc în România, livrare rapidă",
   "Prețuri speciale pentru flote B2B",
-  "Piese testate în condiții reale de lucru",
+  "Produse testate în condiții reale de lucru",
 ];
 
 type HomeProduct = {
@@ -102,7 +102,7 @@ async function getLatestProducts(limit = 4): Promise<HomeProduct[]> {
   return items.slice(0, limit).map((p) => {
     const short =
       (p.short && String(p.short).trim()) ||
-      "Piesă compatibilă pentru camioane. Detalii în pagina produsului.";
+      "Produs compatibil pentru camioane. Detalii în pagina produsului.";
     const price = p.price_gross == null ? 0 : Number(p.price_gross);
     const image = (p.primary_image_url ?? p.image_url ?? null) as string | null;
 
@@ -135,10 +135,10 @@ export default async function HomePage() {
               </span>
               <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
                 Webshop de{" "}
-                <span className="text-[#feab1f]">piese de camion.</span>
+                <span className="text-[#feab1f]">produse pentru camioane.</span>
               </h1>
               <p className="max-w-2xl text-base text-slate-200">
-                Căutare rapidă după marcă, model, an și cod OEM. Piese originale
+                Căutare rapidă după marcă, model, an și cod OEM. Produse originale
                 și aftermarket, cu suport real de la oameni care chiar lucrează
                 cu camioane.
               </p>
@@ -177,7 +177,7 @@ export default async function HomePage() {
                 <div className="space-y-4 text-sm text-slate-200">
                   <p>
                     În versiunea finală, aici clientul își alege rapid camionul
-                    și codul piesei:
+                    și codul produsului:
                   </p>
                   <div className="space-y-3 rounded-2xl bg-linear-to-br from-black via-neutral-900 to-neutral-800 p-4">
                     <div className="grid gap-3 md:grid-cols-2">
@@ -207,7 +207,7 @@ export default async function HomePage() {
                       </div>
                     </div>
                     <button className="w-full rounded-full bg-[#feab1f] px-4 py-2.5 text-xs font-semibold text-slate-950 hover:bg-[#feab1f]/90 transition">
-                      Caută piese compatibile
+                      Caută produse compatibile
                     </button>
                   </div>
                 </div>
@@ -327,11 +327,11 @@ export default async function HomePage() {
                         {cat.name}
                       </h3>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                        {cat.product_count} piese
+                        {cat.product_count} produse
                       </span>
                     </div>
                     <span className="mt-4 text-sm font-medium text-[#feab1f] group-hover:text-[#feab1f]/80">
-                      Vezi piese →
+                      Vezi produse →
                     </span>
                   </Link>
                 ))}
