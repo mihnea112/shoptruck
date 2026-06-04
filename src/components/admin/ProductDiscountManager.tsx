@@ -68,7 +68,7 @@ export function ProductDiscountManager({
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<DiscountData>(
+      const data = await apiFetch<{ product: DiscountData }>(
         `/api/admin/products/${productId}/discount`,
         {
           method: "PUT",
