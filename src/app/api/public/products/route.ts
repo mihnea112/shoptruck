@@ -23,9 +23,12 @@ export async function GET(req: Request) {
   const q = (searchParams.get("q") || "").trim();
   const categoryId = (searchParams.get("categoryId") || "").trim();
   const brandId = (searchParams.get("brandId") || "").trim();
+  const discountActive = searchParams.get("discount_active");
   const sort = searchParams.get("sort") || "newest";
   const limit = Math.min(Number(searchParams.get("limit") || 24), 100);
   const offset = Math.max(Number(searchParams.get("offset") || 0), 0);
+
+  console.log("[API products] GET request params:", { q, categoryId, brandId, discountActive, sort, limit, offset });
 
   const where: string[] = ["p.is_active = true"];
   const values: any[] = [];
@@ -38,11 +41,18 @@ export async function GET(req: Request) {
     values.push(`%${q}%`);
     idx++;
   }
+
+  if (discountActive === "false") {
+    where.push(`p.discount_active = false`);
+  } else if (discountActive === "true") {
+    where.push(`p.discount_active = true`);
+  }
   if (categoryId) {
     where.push(
       `(p.category_id = $${idx}::uuid OR c.parent_id = $${idx}::uuid)`,
     );
     values.push(categoryId);
+    console.log("[API products] Added categoryId filter:", { categoryId, idx });
     idx++;
   }
   if (brandId) {
@@ -60,11 +70,13 @@ export async function GET(req: Request) {
           ? "p.name ASC"
           : "p.created_at DESC";
 
+  const whereClause = where.join(" AND ");
   const sql = `
     SELECT
       p.id, p.slug, p.name, p.sku,
       p.buy_price_net, p.profit_margin_pct,
       p.stock_on_hand, p.stock_reserved,
+      p.discount_price, p.discount_active,
       tr.rate AS tax_rate,
       COALESCE(b.name,'') AS brand_name,
       COALESCE(c.name,'') AS category_name,
@@ -74,6 +86,12 @@ export async function GET(req: Request) {
       img.primary_image_path,
       CEIL(p.buy_price_net * (1 + p.profit_margin_pct/100.0) *
         (1 + CASE WHEN tr.rate <= 1 THEN tr.rate ELSE tr.rate/100 END)) AS sell_gross,
+      CASE
+        WHEN p.discount_active AND p.discount_price > 0
+        THEN ROUND((1 - p.discount_price::NUMERIC / (CEIL(p.buy_price_net * (1 + p.profit_margin_pct/100.0) *
+          (1 + CASE WHEN tr.rate <= 1 THEN tr.rate ELSE tr.rate/100 END)))::NUMERIC) * 100)
+        ELSE 0
+      END AS discount_percentage,
       COUNT(*) OVER() AS total_count
     FROM product p
     JOIN tax_rate tr ON tr.id = p.tax_rate_id
@@ -88,13 +106,15 @@ export async function GET(req: Request) {
       FROM product_image pi WHERE pi.product_id = p.id
       ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.created_at ASC LIMIT 1
     ) img ON true
-    WHERE ${where.join(" AND ")}
+    WHERE ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${idx} OFFSET $${idx + 1}
   `;
   values.push(limit, offset);
+  console.log("[API products] Final WHERE clause:", whereClause, "with values:", values);
 
   try {
+    console.log("[API products] Executing SQL with values:", { where: where.join(" AND "), values, sql });
     const { rows } = await pool.query(sql, values);
     const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
     const items = rows.map((r) => ({
@@ -108,6 +128,9 @@ export async function GET(req: Request) {
       category_id: r.category_id || null,
       primary_code: r.primary_code || null,
       price_gross: Number(r.sell_gross),
+      discount_active: r.discount_active || false,
+      discount_price: r.discount_active ? Number(r.discount_price) : null,
+      discount_percentage: Number(r.discount_percentage) || 0,
       stock_available: Math.max(
         0,
         Number(r.stock_on_hand) - Number(r.stock_reserved),

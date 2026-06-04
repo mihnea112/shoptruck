@@ -243,15 +243,16 @@ export default async function HomePage() {
             ) : (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {latestProducts.map((prod) => (
-                  <div
+                  <Link
                     key={prod.slug}
+                    href={`/produs/${prod.slug}`}
                     className="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm transition hover:-translate-y-1 hover:border-[#feab1f] hover:shadow-lg"
                   >
-                    <div className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <div className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white aspect-[5/4]">
                       <img
                         src={prod.image_url ?? "/placeholder-product.jpg"}
                         alt={prod.name}
-                        className="h-80 md:h-96 w-full object-cover"
+                        className="w-full h-full object-contain"
                         loading="lazy"
                       />
                     </div>
@@ -273,17 +274,14 @@ export default async function HomePage() {
                     </div>
 
                     <div className="mt-auto flex flex-col gap-2">
-                      <Link
-                        href={`/produs/${prod.slug}`}
-                        className="w-full rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition text-center"
-                      >
+                      <span className="w-full rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition text-center block cursor-pointer">
                         Vezi detalii produs
-                      </Link>
+                      </span>
                       <button className="w-full rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:border-[#feab1f] hover:text-[#feab1f] transition">
                         Adaugă în coș
                       </button>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

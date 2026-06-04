@@ -15,6 +15,9 @@ type Product = {
   category_id: string | null;
   primary_code: string | null;
   price_gross: number;
+  discount_price: number | null;
+  discount_active: boolean;
+  discount_percentage: number;
   stock_available: number;
   primary_image_url: string | null;
 };
@@ -103,6 +106,13 @@ function ProductCard({ p }: { p: Product }) {
         <div className="absolute left-3 top-3">
           <StockBadge qty={p.stock_available} />
         </div>
+
+        {/* Discount badge */}
+        {p.discount_active && p.discount_price && (
+          <div className="absolute right-3 top-3 rounded-lg bg-red-600 px-2 py-1 text-sm font-bold text-white">
+            -{p.discount_percentage}%
+          </div>
+        )}
       </div>
 
       {/* Info */}
@@ -120,13 +130,28 @@ function ProductCard({ p }: { p: Product }) {
             {p.sku}
           </div>
         )}
-        <div className="mt-3 flex items-center justify-between">
-          <div className="text-lg font-bold text-slate-900">
-            {fmtRON(p.price_gross)}
-          </div>
+        <div className="mt-3 flex flex-col gap-2">
+          {p.discount_active && p.discount_price ? (
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-slate-500 line-through">
+                {fmtRON(p.price_gross)}
+              </div>
+              <div className="text-lg font-bold text-green-600">
+                {fmtRON(p.discount_price)}
+              </div>
+              <div className="text-xs text-emerald-600 font-medium">
+                💚 Economisesti {fmtRON(p.price_gross - p.discount_price)}
+              </div>
+            </div>
+          ) : (
+            <div className="text-lg font-bold text-slate-900">
+              {fmtRON(p.price_gross)}
+            </div>
+          )}
+
           <div
             className="rounded-full bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900
-            opacity-0 transition group-hover:opacity-100"
+            opacity-0 transition group-hover:opacity-100 self-end"
           >
             Vezi →
           </div>

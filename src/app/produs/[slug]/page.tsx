@@ -216,16 +216,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
         {/* PRODUCT SECTION */}
         <section className="border-b border-slate-200 bg-white">
-          <div className="w-full px-6 py-10 lg:px-10 xl:px-16">
+          <div className="w-full px-4 py-10 lg:px-6 xl:px-8">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               {/* LEFT: image + small info */}
               <div className="space-y-6">
-                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm">
+                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm aspect-[5/4]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={mainImage}
                     alt={product.name}
-                    className="h-[420px] w-full object-cover md:h-[520px]"
+                    className="w-full h-full object-contain"
                     loading="lazy"
                   />
                 </div>
@@ -235,13 +235,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
                     {thumbs.map((u) => (
                       <div
                         key={u}
-                        className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                        className="overflow-hidden rounded-xl border border-slate-200 bg-white aspect-[5/4]"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={u}
                           alt="Imagine produs"
-                          className="h-16 w-full object-cover"
+                          className="w-full h-full object-contain"
                           loading="lazy"
                         />
                       </div>
@@ -275,7 +275,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">
                     {product.name}
                   </h1>
-                  <p>Cod Produs: {product.primary_code}</p>
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 inline-block">
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">
+                      Cod Produs
+                    </div>
+                    <div className="text-sm font-mono font-bold text-amber-900">
+                      {product.primary_code}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Price block */}
@@ -444,13 +451,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
                     href={`/produs/${relProd.slug}`}
                     className="group rounded-xl border border-slate-200 overflow-hidden bg-white hover:shadow-lg transition"
                   >
-                    <div className="aspect-square bg-slate-100 overflow-hidden">
+                    <div className="aspect-[5/4] bg-slate-100 overflow-hidden">
                       {relProd.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={relProd.image_url}
                           alt={relProd.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition"
+                          className="w-full h-full object-contain group-hover:scale-105 transition"
                           loading="lazy"
                         />
                       ) : (

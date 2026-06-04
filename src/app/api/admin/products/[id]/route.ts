@@ -377,6 +377,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
       `;
     } else {
       // Primary-only upsert (no deletions)
+      // First, remove is_primary from all existing primary codes for this product
+      await sql`
+        WITH _ctx AS (
+          SELECT set_config('app.user_id', ${actorId}, true)
+        )
+        UPDATE product_code
+        SET is_primary = false, code_kind = 'EQUIVALENT'
+        WHERE product_id = ${okId}::uuid
+          AND is_primary = true
+          AND code_id <> ${primaryNorm.code_norm}
+      `;
+
+      // Then insert/update the new primary code
       await sql`
         WITH _ctx AS (
           SELECT set_config('app.user_id', ${actorId}, true)
@@ -389,18 +402,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
           RETURNING 1
         )
         SELECT 1
-      `;
-
-      // Ensure no other rows remain marked primary
-      await sql`
-        WITH _ctx AS (
-          SELECT set_config('app.user_id', ${actorId}, true)
-        )
-        UPDATE product_code
-        SET is_primary = false, code_kind = 'EQUIVALENT'
-        WHERE product_id = ${okId}::uuid
-          AND is_primary = true
-          AND code_id <> ${primaryNorm.code_norm}
       `;
     }
 
@@ -463,7 +464,23 @@ export async function DELETE(req: Request, ctx: Ctx) {
     if (!deleted) return json({ ok: false, error: "Produs inexistent." }, 404);
 
     return json({ ok: true, id: deleted });
-  } catch {
-    return json({ ok: false, error: "Eroare la ștergere." }, 500);
+  } catch (e: any) {
+    console.error("[DELETE product] Error:", {
+      id,
+      code: e?.code,
+      message: e?.message,
+      detail: e?.detail,
+      constraint: e?.constraint,
+    });
+
+    // Check for foreign key constraint violations
+    if (e?.code === "23503") {
+      return json(
+        { ok: false, error: "Nu poti sterge acest produs. Are referinte in alte tabele (comenzi, stocuri, etc)." },
+        400
+      );
+    }
+
+    return json({ ok: false, error: "Eroare la ștergere: " + (e?.message || "Necunoscut") }, 500);
   }
 }

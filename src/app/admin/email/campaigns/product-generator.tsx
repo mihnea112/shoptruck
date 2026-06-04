@@ -7,6 +7,9 @@ interface Product {
   slug: string;
   name: string;
   price_gross: number;
+  discount_price: number | null;
+  discount_active: boolean;
+  discount_percentage: number;
   primary_image_url: string | null;
   brand_name: string | null;
 }
@@ -25,6 +28,7 @@ export default function ProductGenerator({ onGenerate, onGeneratingChange }: Pro
   const [subject, setSubject] = useState("");
   const [tone, setTone] = useState("professional");
   const [keyPoints, setKeyPoints] = useState("");
+  const [onlyDiscounted, setOnlyDiscounted] = useState(true); // Show only discounted products by default
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const searchProducts = async (query: string) => {
@@ -35,7 +39,14 @@ export default function ProductGenerator({ onGenerate, onGeneratingChange }: Pro
 
     setSearching(true);
     try {
-      const res = await fetch(`/api/public/products?q=${encodeURIComponent(query)}&limit=20`);
+      const params = new URLSearchParams();
+      params.set("q", query);
+      params.set("limit", "20");
+      if (onlyDiscounted) {
+        params.set("discount_active", "true"); // Only discounted products
+      }
+
+      const res = await fetch(`/api/public/products?${params}`);
       const data = await res.json();
       if (data.ok) {
         setAvailableProducts(data.items || []);
@@ -55,6 +66,13 @@ export default function ProductGenerator({ onGenerate, onGeneratingChange }: Pro
       searchProducts(query);
     } else {
       setAvailableProducts([]);
+    }
+  };
+
+  const handleOnlyDiscountedChange = (checked: boolean) => {
+    setOnlyDiscounted(checked);
+    if (searchQuery.trim().length >= 2) {
+      searchProducts(searchQuery);
     }
   };
 
@@ -180,6 +198,20 @@ export default function ProductGenerator({ onGenerate, onGeneratingChange }: Pro
             />
           </div>
 
+          {/* Filter: Only Discounted Products */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="onlyDiscounted"
+              checked={onlyDiscounted}
+              onChange={(e) => handleOnlyDiscountedChange(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            <label htmlFor="onlyDiscounted" className="text-sm font-medium text-slate-900 cursor-pointer">
+              Afișează doar produsele cu reduceri
+            </label>
+          </div>
+
           {/* Product Search */}
           <div>
             <label className="block text-sm font-medium text-slate-900 mb-2">
@@ -214,11 +246,26 @@ export default function ProductGenerator({ onGenerate, onGeneratingChange }: Pro
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-900 truncate">
-                        {product.name}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-slate-900 truncate">
+                          {product.name}
+                        </div>
+                        {product.discount_active && product.discount_price && (
+                          <span className="text-xs font-bold text-white bg-red-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            -{product.discount_percentage}%
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {product.brand_name} • {product.price_gross.toFixed(0)} RON
+                        {product.brand_name} •
+                        {product.discount_active && product.discount_price ? (
+                          <>
+                            <span className="line-through">{product.price_gross.toFixed(0)} RON</span>
+                            <span className="text-green-600 font-medium"> {product.discount_price.toFixed(0)} RON</span>
+                          </>
+                        ) : (
+                          <span> {product.price_gross.toFixed(0)} RON</span>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -248,11 +295,25 @@ export default function ProductGenerator({ onGenerate, onGeneratingChange }: Pro
                         />
                       )}
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-900 truncate">
-                          {product.name}
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-slate-900 truncate">
+                            {product.name}
+                          </div>
+                          {product.discount_active && product.discount_price && (
+                            <span className="text-xs font-bold text-white bg-red-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              -{product.discount_percentage}%
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-600">
-                          {product.price_gross.toFixed(0)} RON
+                          {product.discount_active && product.discount_price ? (
+                            <>
+                              <span className="line-through">{product.price_gross.toFixed(0)} RON</span>
+                              <span className="text-green-600 font-medium ml-1">{product.discount_price.toFixed(0)} RON</span>
+                            </>
+                          ) : (
+                            <span>{product.price_gross.toFixed(0)} RON</span>
+                          )}
                         </div>
                       </div>
                     </div>

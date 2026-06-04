@@ -459,10 +459,10 @@ export default function CampaignEditorUI({ campaignId, isNew }: CampaignEditorUI
               </button>
 
               {showPreview && (
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 max-h-96 overflow-y-auto">
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 min-h-96 max-h-screen overflow-y-auto">
                   <div
                     dangerouslySetInnerHTML={{ __html: form.body_html }}
-                    className="prose prose-sm max-w-none"
+                    className="prose prose-sm max-w-none w-full"
                   />
                 </div>
               )}

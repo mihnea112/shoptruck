@@ -383,6 +383,27 @@ export default async function AdminLayout({
                 {isAdmin ? (
                   <>
                     <NavItem
+                      href="/admin/reduceri"
+                      label="Gestionare Reduceri"
+                      description="Discounturi și promoții"
+                      icon={
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          className="h-5 w-5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M6 9.5h12" />
+                          <path d="M3 9a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-6z" />
+                          <path d="M9 14l6-4" />
+                        </svg>
+                      }
+                    />
+                    <NavItem
                       href="/admin/import"
                       label="Import Produse"
                       description="Importă din XML"
