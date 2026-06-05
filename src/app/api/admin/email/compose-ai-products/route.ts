@@ -13,6 +13,9 @@ interface Product {
   slug: string;
   name: string;
   price_gross: number;
+  discount_price: number | null;
+  discount_active: boolean;
+  discount_percentage: number;
   primary_image_url: string | null;
   brand_name: string | null;
 }
@@ -49,7 +52,7 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "Cel puțin un produs este necesar." }, 400);
     }
 
-    // Build website branding context
+    // Build website branding context with actual company details
     const brandingContext = `
 ## Branding Guidelines (MUST respect):
 - **Website**: ShopTruck - magazin online de piese și echipamente
@@ -64,6 +67,15 @@ export async function POST(req: Request) {
   - Footer with contact & unsubscribe info
   - Orange accent colors (#feab1f)
   - Responsive design
+
+## Company Contact Details (for footer):
+- **Company Name**: ShopTruck.ro
+- **Address**: Str. Miresei Nr. 12A, TIMIS, TIMISOARA
+- **Phone**: 0256 244 136
+- **Email**: office@autotruck.ro
+- **CIF**: RO14084923
+- **Registration**: J35/838/2001
+- **Website**: https://shoptruck.ro
 `;
 
     // Build product list with links
@@ -74,17 +86,21 @@ export async function POST(req: Request) {
     const productListHtml = products
       .map((p: Product, idx: number) => {
         const productUrl = `${siteUrl}/produs/${p.slug}`;
-        const price = new Intl.NumberFormat("ro-RO", {
+        const regularPrice = new Intl.NumberFormat("ro-RO", {
           style: "currency",
           currency: "RON",
           maximumFractionDigits: 0,
         }).format(p.price_gross);
 
+        const priceInfo = p.discount_active && p.discount_price
+          ? `Original Price: ${regularPrice} | Discounted Price: ${new Intl.NumberFormat("ro-RO", { style: "currency", currency: "RON", maximumFractionDigits: 0 }).format(p.discount_price)} | Discount: -${p.discount_percentage}%`
+          : `Price: ${regularPrice}`;
+
         return `
 Product ${idx + 1}:
 - Name: ${p.name}
 - Brand: ${p.brand_name || "N/A"}
-- Price: ${price}
+- ${priceInfo}
 - URL: ${productUrl}
 - Image URL: ${p.primary_image_url || "N/A"}`;
       })
@@ -112,20 +128,29 @@ ${productListHtml}
 1. Generate ONLY valid, professional HTML email code
 2. Use ShopTruck branding (#feab1f orange color, professional layout)
 3. Include all products with:
-   - Product image
-   - Product name
-   - Price in RON (lei)
-   - Direct link button to product page
-4. Add professional header with ShopTruck branding
-5. Include compelling call-to-action button
-6. Add footer with:
-   - Company info
-   - Unsubscribe placeholder
-   - Contact info
-7. Use inline CSS for email compatibility
-8. Ensure responsive design
-9. Keep email under 600px width
-10. Use the tone: ${toneDescriptions[tone]}
+   - Product image (centered, with alt text)
+   - Product name (centered)
+   - Brand name (centered)
+   - For DISCOUNTED products: Show original price (strikethrough) + discounted price (in green, bold) + red discount badge with percentage (e.g., "-30%")
+   - For regular products: Show price only
+   - Direct link button to product page (centered)
+4. CENTER all product cards, images, and text alignment in the email
+5. Add professional header with ShopTruck branding
+6. Include compelling call-to-action button
+7. Add footer with:
+   - Company name: ShopTruck.ro
+   - Full address: Str. Miresei Nr. 12A, TIMIS, TIMISOARA
+   - Phone: 0256 244 136
+   - Email: office@autotruck.ro
+   - CIF: RO14084923 | Registration: J35/838/2001
+   - Website link: https://shoptruck.ro
+   - Unsubscribe link/placeholder
+   - Professional styling with gray background
+8. Use inline CSS for email compatibility
+9. Ensure responsive design
+10. Keep email under 600px width
+11. Use the tone: ${toneDescriptions[tone]}
+12. **IMPORTANT**: Center all product images and text for professional appearance
 
 ## Output Format:
 ONLY return the complete HTML email code. No explanations, no markdown, no text before or after the HTML. Start with <!DOCTYPE html> and end with </html>.
