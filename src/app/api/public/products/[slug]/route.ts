@@ -197,6 +197,8 @@ export async function GET(
       p.name,
       p.buy_price_net,
       p.profit_margin_pct,
+      p.discount_price,
+      p.discount_active,
       tr.rate AS tax_rate,
       b.name AS brand_name,
       pi.storage_path
@@ -351,12 +353,19 @@ export async function GET(
         Number(rp.buy_price_net) * (1 + Number(rp.profit_margin_pct) / 100);
       const rpSellGross = ceilToLeu(rpSellNet * (1 + rpTaxFrac));
 
+      const discountPercentage = rp.discount_active && rp.discount_price > 0
+        ? Math.round((1 - rp.discount_price / rpSellGross) * 100)
+        : 0;
+
       return {
         id: rp.id,
         slug: rp.slug,
         name: rp.name,
         brand_name: rp.brand_name ?? null,
         price_gross: rpSellGross,
+        discount_price: rp.discount_price ?? null,
+        discount_active: rp.discount_active ?? false,
+        discount_percentage: discountPercentage,
         image_url: toPublicUrl(rp.storage_path ?? null),
       };
     });

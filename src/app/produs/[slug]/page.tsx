@@ -115,6 +115,9 @@ type RelatedProduct = {
   name: string;
   brand_name: string | null;
   price_gross: number;
+  discount_price: number | null;
+  discount_active: boolean;
+  discount_percentage: number;
   image_url: string | null;
 };
 
