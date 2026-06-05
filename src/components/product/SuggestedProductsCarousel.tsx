@@ -9,6 +9,9 @@ type SuggestedProduct = {
   name: string;
   brand_name: string | null;
   price_gross: number;
+  discount_price: number | null;
+  discount_active: boolean;
+  discount_percentage: number;
   image_url: string | null;
 };
 
@@ -49,7 +52,7 @@ export function SuggestedProductsCarousel({
   return (
     <div className="mt-10 space-y-6">
       <h2 className="text-2xl font-semibold text-slate-900">
-        Te ar putea interesa si...
+        Te-ar putea interesa si...
       </h2>
 
       <div>
@@ -111,8 +114,24 @@ export function SuggestedProductsCarousel({
                         {product.brand_name}
                       </p>
                     )}
-                    <div className="text-sm font-semibold text-slate-900">
-                      {formatRON(product.price_gross)}
+                    <div className="flex items-end gap-2">
+                      {product.discount_active && product.discount_price ? (
+                        <>
+                          <span className="text-xs font-medium text-slate-500 line-through">
+                            {formatRON(product.price_gross)}
+                          </span>
+                          <span className="text-sm font-semibold text-green-600">
+                            {formatRON(product.discount_price)}
+                          </span>
+                          <span className="text-xs font-bold text-white bg-red-600 px-1.5 py-0.5 rounded">
+                            -{product.discount_percentage}%
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-900">
+                          {formatRON(product.price_gross)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </Link>

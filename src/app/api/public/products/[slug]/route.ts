@@ -39,18 +39,28 @@ export async function GET(
       p.id,
       p.slug,
       p.name,
+      p.sku,
       p.description,
       p.buy_price_net,
       p.profit_margin_pct,
       p.is_active,
       p.stock_on_hand,
       p.stock_reserved,
+      p.discount_price,
+      p.discount_active,
       tr.rate AS tax_rate,
 
       b.name AS brand_name,
       c.name AS category_name,
 
       pc_primary.code_id AS primary_code,
+
+      CASE
+        WHEN p.discount_active AND p.discount_price > 0
+        THEN ROUND((1 - p.discount_price::NUMERIC / (CEIL(p.buy_price_net * (1 + p.profit_margin_pct/100.0) *
+          (1 + CASE WHEN tr.rate <= 1 THEN tr.rate ELSE tr.rate/100 END)))::NUMERIC) * 100)
+        ELSE 0
+      END AS discount_percentage,
 
       img.primary_image_path,
       img.images_json,
@@ -99,15 +109,16 @@ export async function GET(
         COALESCE(
           jsonb_agg(
             jsonb_build_object(
-              'code', prc.code_id,
+              'code', COALESCE(pc.code_norm, prc.code_id),
               'is_primary', prc.is_primary,
               'code_kind', prc.code_kind
             )
-            ORDER BY prc.is_primary DESC, prc.code_id ASC
+            ORDER BY prc.is_primary DESC, COALESCE(pc.code_norm, prc.code_id) ASC
           ) FILTER (WHERE prc.code_id IS NOT NULL),
           '[]'::jsonb
         ) AS all_codes_json
       FROM product_code prc
+      LEFT JOIN part_code pc ON pc.id = prc.code_id::uuid
       WHERE prc.product_id = p.id
     ) codes ON true
 
@@ -144,6 +155,8 @@ export async function GET(
       p.name,
       p.buy_price_net,
       p.profit_margin_pct,
+      p.discount_price,
+      p.discount_active,
       tr.rate AS tax_rate,
       b.name AS brand_name,
       pi.storage_path,
@@ -178,7 +191,7 @@ export async function GET(
   `;
 
   const relatedProductsSql = `
-    SELECT DISTINCT
+    SELECT
       p.id,
       p.slug,
       p.name,
@@ -194,7 +207,7 @@ export async function GET(
     WHERE p.is_active = true
       AND p.slug != $1
       AND p.id IN (
-        SELECT DISTINCT prc2.product_id
+        SELECT prc2.product_id
         FROM product_code prc2
         WHERE prc2.code_id IN (
           SELECT code_id FROM product_code
@@ -271,24 +284,30 @@ export async function GET(
     const codesJson = r.all_codes_json ?? [];
     const codesArr = Array.isArray(codesJson) ? codesJson : [];
     const equivalentCodes = codesArr
-      .filter((c: any) => !c.is_primary)
+      .filter((c: any) => !c.is_primary && c.code)
       .map((c: any) => c.code);
+
+    const primaryCode = r.primary_code && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r.primary_code) ? (r.sku ?? null) : (r.primary_code ?? null);
 
     const item = {
       id: r.id,
       slug: r.slug,
       name: r.name,
+      sku: r.sku ?? null,
 
       short: null,
       description: r.description ?? null,
 
       brand_name: r.brand_name ?? null,
       category_name: r.category_name ?? null,
-      primary_code: r.primary_code ?? null,
+      primary_code: primaryCode,
       equivalent_codes: equivalentCodes,
       all_codes: codesArr,
 
       price_gross: sellGross,
+      discount_price: r.discount_price ?? null,
+      discount_active: r.discount_active ?? false,
+      discount_percentage: r.discount_percentage ?? 0,
 
       primary_image_url: toPublicUrl(r.primary_image_path ?? null),
       images,
@@ -308,12 +327,19 @@ export async function GET(
         Number(sp.buy_price_net) * (1 + Number(sp.profit_margin_pct) / 100);
       const spSellGross = ceilToLeu(spSellNet * (1 + spTaxFrac));
 
+      const discountPercentage = sp.discount_active && sp.discount_price > 0
+        ? Math.round((1 - sp.discount_price / spSellGross) * 100)
+        : 0;
+
       return {
         id: sp.id,
         slug: sp.slug,
         name: sp.name,
         brand_name: sp.brand_name ?? null,
         price_gross: spSellGross,
+        discount_price: sp.discount_price ?? null,
+        discount_active: sp.discount_active ?? false,
+        discount_percentage: discountPercentage,
         image_url: toPublicUrl(sp.storage_path ?? null),
       };
     });

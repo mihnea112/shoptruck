@@ -25,6 +25,7 @@ type DbProduct = {
   id: string;
   slug: string;
   name: string;
+  sku: string;
 
   // Optional (depending on your API)
   short: string | null;
@@ -38,6 +39,9 @@ type DbProduct = {
   all_codes?: DbCode[];
 
   price_gross: number | null;
+  discount_price: number | null;
+  discount_active: boolean;
+  discount_percentage: number;
 
   primary_image_url: string | null;
   images: PublicImage[];
@@ -119,8 +123,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   const product = await getProductBySlug(slug);
   const warehouseStock: WarehouseStock[] = (product as any)?._warehouses ?? [];
-  const relatedProducts: RelatedProduct[] = (product as any)?._relatedProducts ?? [];
-  const suggestedProducts: RelatedProduct[] = (product as any)?._suggestedProducts ?? [];
+  const relatedProducts: RelatedProduct[] =
+    (product as any)?._relatedProducts ?? [];
+  const suggestedProducts: RelatedProduct[] =
+    (product as any)?._suggestedProducts ?? [];
 
   if (!product) {
     return (
@@ -275,14 +281,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">
                     {product.name}
                   </h1>
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 inline-block">
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">
-                      Cod Produs
+                  {product.sku && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 inline-block">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">
+                        SKU
+                      </div>
+                      <div className="text-sm font-mono font-bold text-amber-900">
+                        {product.sku}
+                      </div>
                     </div>
-                    <div className="text-sm font-mono font-bold text-amber-900">
-                      {product.primary_code}
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Price block */}
@@ -293,12 +301,34 @@ export default async function ProductPage({ params }: ProductPageProps) {
                         Preț
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-semibold text-slate-900">
-                          {price == null ? "—" : formatRON(price)}
-                        </span>
+                        {product.discount_active && product.discount_price ? (
+                          <>
+                            <span className="text-sm font-medium text-slate-500 line-through">
+                              {price == null ? "—" : formatRON(price)}
+                            </span>
+                            <span className="text-2xl font-semibold text-green-600">
+                              {formatRON(product.discount_price)}
+                            </span>
+                            <span className="text-sm font-bold text-white bg-red-600 px-2 py-1 rounded-lg">
+                              -{product.discount_percentage}%
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-2xl font-semibold text-slate-900">
+                            {price == null ? "—" : formatRON(price)}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        Preț final cu TVA · Factură fiscală inclusă
+                        Preț final cu TVA
+                        {product.discount_active &&
+                          product.discount_price &&
+                          price && (
+                            <div className="text-green-600 font-medium mt-1">
+                              💚 Economisesti{" "}
+                              {formatRON(price - product.discount_price)}
+                            </div>
+                          )}
                       </div>
                     </div>
                     <div className="text-xs text-right">

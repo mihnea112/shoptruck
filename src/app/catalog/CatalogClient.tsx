@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { MainHeader } from "@/components/layout/MainHeader";
+import { MainFooter } from "@/components/layout/MainFooter";
 
 // ─── Types ────────────────────────────────────────────────────
 type Product = {
@@ -22,7 +24,13 @@ type Product = {
   primary_image_url: string | null;
 };
 
-type FilterOption = { id: string; name: string; count?: number };
+type FilterOption = {
+  id: string;
+  name: string;
+  count?: number;
+  parent_id?: string | null;
+  slug?: string;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────
 function fmtRON(n: number) {
@@ -189,6 +197,9 @@ export default function CatalogClient() {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<FilterOption[]>([]);
   const [brands, setBrands] = useState<FilterOption[]>([]);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [expandedBrands, setExpandedBrands] = useState(false);
+  const [showAllBrands, setShowAllBrands] = useState(false);
 
   // Filters
   const [q, setQ] = useState("");
@@ -201,6 +212,11 @@ export default function CatalogClient() {
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(0);
   const LIMIT = 24;
+
+  // Separate parent and child categories
+  const parentCategories = categories.filter((c) => !c.parent_id);
+  const getChildCategories = (parentId: string) =>
+    categories.filter((c) => c.parent_id === parentId);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -264,10 +280,15 @@ export default function CatalogClient() {
     );
   }
 
-  function handleCategory(id: string) {
-    setCategoryId(id);
-    setPage(0);
-    loadProducts(q, id, brandId, sort, 0);
+  function handleCategory(id: string, isParent = false) {
+    // If clicking a parent category, toggle expansion; otherwise filter products
+    if (isParent) {
+      setExpandedCategory(expandedCategory === id ? null : id);
+    } else {
+      setCategoryId(id);
+      setPage(0);
+      loadProducts(q, id, brandId, sort, 0);
+    }
   }
 
   function handleBrand(id: string) {
@@ -295,7 +316,9 @@ export default function CatalogClient() {
   const hasFilters = q || categoryId || brandId || sort !== "newest";
 
   return (
-    <>
+    <div className="flex flex-col min-h-screen bg-slate-50">
+      <MainHeader />
+
       {/* Page header */}
       <div className="border-b border-slate-200 bg-white">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
@@ -400,7 +423,7 @@ export default function CatalogClient() {
             )}
 
             {/* Categories */}
-            {categories.length > 0 && (
+            {parentCategories.length > 0 && (
               <div className="mb-6">
                 <div className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">
                   Categorii
@@ -415,17 +438,61 @@ export default function CatalogClient() {
                       Toate
                     </button>
                   </li>
-                  {categories.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        onClick={() => handleCategory(c.id)}
-                        className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
-                          ${categoryId === c.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
-                      >
-                        {c.name}
-                      </button>
-                    </li>
-                  ))}
+                  {parentCategories.map((parent) => {
+                    const children = getChildCategories(parent.id);
+                    const isExpanded = expandedCategory === parent.id;
+                    return (
+                      <li key={parent.id}>
+                        {children.length > 0 ? (
+                          <>
+                            <button
+                              onClick={() => handleCategory(parent.id, true)}
+                              className={`w-full rounded-lg px-3 py-2 text-left text-sm transition flex items-center justify-between
+                                ${isExpanded ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
+                            >
+                              {parent.name}
+                              <svg
+                                className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                                />
+                              </svg>
+                            </button>
+                            {isExpanded && (
+                              <ul className="mt-1 space-y-1 pl-3 border-l border-slate-200">
+                                {children.map((child) => (
+                                  <li key={child.id}>
+                                    <button
+                                      onClick={() => handleCategory(child.id)}
+                                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
+                                        ${categoryId === child.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
+                                    >
+                                      {child.name}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => handleCategory(parent.id)}
+                            className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
+                              ${categoryId === parent.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
+                          >
+                            {parent.name}
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -433,31 +500,77 @@ export default function CatalogClient() {
             {/* Brands */}
             {brands.length > 0 && (
               <div className="mb-6">
-                <div className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                  Marca
-                </div>
-                <ul className="space-y-1">
-                  <li>
-                    <button
-                      onClick={() => handleBrand("")}
-                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
-                        ${!brandId ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
-                    >
-                      Toate marcile
-                    </button>
-                  </li>
-                  {brands.map((b) => (
-                    <li key={b.id}>
+                <button
+                  onClick={() => setExpandedBrands(!expandedBrands)}
+                  className="mb-3 flex w-full items-center justify-between"
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                    Marca
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-slate-400 transition-transform ${expandedBrands ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                    />
+                  </svg>
+                </button>
+
+                {expandedBrands && (
+                  <ul className="space-y-1">
+                    <li>
                       <button
-                        onClick={() => handleBrand(b.id)}
+                        onClick={() => handleBrand("")}
                         className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
-                          ${brandId === b.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
+                          ${!brandId ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
                       >
-                        {b.name}
+                        Toate marcile
                       </button>
                     </li>
-                  ))}
-                </ul>
+                    {brands.slice(0, 5).map((b) => (
+                      <li key={b.id}>
+                        <button
+                          onClick={() => handleBrand(b.id)}
+                          className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
+                            ${brandId === b.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
+                        >
+                          {b.name}
+                        </button>
+                      </li>
+                    ))}
+                    {showAllBrands && brands.length > 5 && (
+                      <div className="pt-2 space-y-1 border-t border-slate-200">
+                        {brands.slice(5).map((b) => (
+                          <li key={b.id}>
+                            <button
+                              onClick={() => handleBrand(b.id)}
+                              className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
+                                ${brandId === b.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
+                            >
+                              {b.name}
+                            </button>
+                          </li>
+                        ))}
+                      </div>
+                    )}
+                    {brands.length > 5 && (
+                      <li className="pt-2 border-t border-slate-200">
+                        <button
+                          onClick={() => setShowAllBrands(!showAllBrands)}
+                          className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-amber-600 hover:bg-amber-50 transition"
+                        >
+                          {showAllBrands ? "← Afiseaza mai putine" : `Vezi mai multe (${brands.length - 5})`}
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                )}
               </div>
             )}
           </aside>
@@ -468,14 +581,18 @@ export default function CatalogClient() {
             <div className="mb-4 flex flex-wrap gap-2 lg:hidden">
               <select
                 value={categoryId}
-                onChange={(e) => handleCategory(e.target.value)}
+                onChange={(e) => handleCategory(e.target.value, false)}
                 className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400"
               >
                 <option value="">Toate categoriile</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
+                {parentCategories.map((parent) => (
+                  <optgroup key={parent.id} label={parent.name}>
+                    {getChildCategories(parent.id).map((child) => (
+                      <option key={child.id} value={child.id}>
+                        {child.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <select
@@ -577,6 +694,8 @@ export default function CatalogClient() {
           </div>
         </div>
       </div>
-    </>
+
+      <MainFooter />
+    </div>
   );
 }

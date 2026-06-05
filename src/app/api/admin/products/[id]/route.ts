@@ -108,14 +108,15 @@ export async function GET(req: Request, ctx: Ctx) {
   const codeRows = await sql`
     SELECT
       j.id,
-      j.code_id AS code,
+      COALESCE(pc.code_norm, j.code_id) AS code,
       j.is_primary,
       j.code_kind,
       j.note,
       j.created_at
     FROM product_code j
+    LEFT JOIN part_code pc ON pc.id = j.code_id::uuid
     WHERE j.product_id = ${id}::uuid
-    ORDER BY j.is_primary DESC, j.code_id ASC
+    ORDER BY j.is_primary DESC, COALESCE(pc.code_norm, j.code_id) ASC
   `;
 
   const codes = (codeRows as any[]) || [];
