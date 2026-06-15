@@ -36,7 +36,7 @@ export async function GET(req: Request) {
       LEFT JOIN brand b ON b.id = p.brand_id
       LEFT JOIN LATERAL (
         SELECT pc.code_norm FROM product_code j
-        JOIN part_code pc ON pc.id = j.code_id
+        JOIN part_code pc ON pc.id = (CASE WHEN j.code_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN j.code_id::uuid ELSE NULL END)
         WHERE j.product_id = p.id AND j.is_primary = true LIMIT 1
       ) pc ON true
       LEFT JOIN LATERAL (

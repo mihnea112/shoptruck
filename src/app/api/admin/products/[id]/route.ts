@@ -114,7 +114,7 @@ export async function GET(req: Request, ctx: Ctx) {
       j.note,
       j.created_at
     FROM product_code j
-    LEFT JOIN part_code pc ON pc.id = j.code_id::uuid
+    LEFT JOIN part_code pc ON pc.id = (CASE WHEN j.code_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN j.code_id::uuid ELSE NULL END)
     WHERE j.product_id = ${id}::uuid
     ORDER BY j.is_primary DESC, COALESCE(pc.code_norm, j.code_id) ASC
   `;
