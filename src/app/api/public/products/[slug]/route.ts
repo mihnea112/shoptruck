@@ -118,7 +118,7 @@ export async function GET(
           '[]'::jsonb
         ) AS all_codes_json
       FROM product_code prc
-      LEFT JOIN part_code pc ON pc.id = prc.code_id::uuid
+      LEFT JOIN part_code pc ON pc.id = (CASE WHEN prc.code_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN prc.code_id::uuid ELSE NULL END)
       WHERE prc.product_id = p.id
     ) codes ON true
 
