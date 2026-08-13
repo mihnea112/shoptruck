@@ -37,7 +37,9 @@ export default async function CategoriiPage() {
     roles.includes("sales_rep") ||
     roles.includes("sales-rep") ||
     roles.includes("salesrep") ||
-    roles.includes("sales");
+    roles.includes("sales") ||
+    roles.includes("warehouse") ||
+    roles.includes("warehouse_op");
 
   if (!canView) redirect("/");
 

@@ -9,7 +9,16 @@ export class ApiError extends Error {
   }
 }
 
-type StaffRole = string;
+/**
+ * Staff roles:
+ *   admin      – full access to everything
+ *   sales      – offers, orders, invoices, products (view), categories
+ *   marketing  – email campaigns, email contacts
+ *   warehouse  – warehouses, stock, transfers, stock movements, receptions, suppliers, PDF goods intake
+ */
+export type StaffRole = "admin" | "sales" | "marketing" | "warehouse" | (string & {});
+
+export const ALL_STAFF_ROLES: StaffRole[] = ["admin", "sales", "marketing", "warehouse"];
 
 function normalizeRoles(roles: unknown): string[] {
   if (!roles) return [];
@@ -47,7 +56,7 @@ export async function requireAnyStaff(req: Request) {
 /** Require staff with at least one allowed role. */
 export async function requireStaff(
   req: Request,
-  roles: StaffRole[] = ["admin", "sales_rep"]
+  roles: StaffRole[] = ["admin", "sales"]
 ) {
   const user = await requireAnyStaff(req);
   const r = normalizeRoles((user as any).roles);
@@ -60,6 +69,21 @@ export async function requireStaff(
 /** Require admin-only. */
 export async function requireAdmin(req: Request) {
   return requireStaff(req, ["admin"]);
+}
+
+/** Require sales role (or admin). */
+export async function requireSales(req: Request) {
+  return requireStaff(req, ["admin", "sales"]);
+}
+
+/** Require marketing role (or admin). */
+export async function requireMarketing(req: Request) {
+  return requireStaff(req, ["admin", "marketing"]);
+}
+
+/** Require warehouse role (or admin). */
+export async function requireWarehouse(req: Request) {
+  return requireStaff(req, ["admin", "warehouse"]);
 }
 
 /** Optional: require customer login. */

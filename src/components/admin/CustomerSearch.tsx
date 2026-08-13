@@ -30,6 +30,12 @@ export type CustomerDTO = {
   first_name?: string;
   last_name?: string;
   phone?: string;
+
+  // Adresa (ambele tipuri)
+  billing_line1?: string;
+  billing_city?: string;
+  billing_zip?: string;
+  billing_country?: string;
 };
 
 interface CustomerSearchProps {
@@ -52,6 +58,11 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
     phone: "",
     company_name: "",
     vat_id: "",
+    contact_email: "",
+    billing_line1: "",
+    billing_city: "",
+    billing_zip: "",
+    billing_country: "Romania",
   });
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -104,6 +115,11 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
         reg_no: newCust.reg_no || null,
         phone: newCust.kind === "company" ? (newCust.contact_phone || null) : (newCust.phone || null),
         legal_name: newCust.kind === "company" ? (newCust.company_name || null) : null,
+        email: newCust.contact_email || null,
+        billing_line1: newCust.billing_line1 || null,
+        billing_city: newCust.billing_city || null,
+        billing_zip: newCust.billing_zip || null,
+        billing_country: newCust.billing_country || "Romania",
       };
 
       const res = await fetch("/api/admin/customers", {
@@ -249,12 +265,50 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
                       onChange={e => setNewCust({...newCust, last_name: e.target.value})}
                     />
                   </div>
-                  <input 
-                    placeholder="Telefon" 
+                  <input
+                    placeholder="Telefon"
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                     value={newCust.phone}
                     onChange={e => setNewCust({...newCust, phone: e.target.value})}
                   />
+                  <input
+                    type="email"
+                    placeholder="Email *"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                    value={newCust.contact_email}
+                    onChange={e => setNewCust({...newCust, contact_email: e.target.value})}
+                  />
+
+                  {/* Adresa */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="text-xs font-semibold text-slate-700 mb-2">Adresă</p>
+                    <input
+                      placeholder="Strada, nr., bloc, ap."
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25 mb-2"
+                      value={newCust.billing_line1}
+                      onChange={e => setNewCust({...newCust, billing_line1: e.target.value})}
+                    />
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <input
+                        placeholder="Oraș"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                        value={newCust.billing_city}
+                        onChange={e => setNewCust({...newCust, billing_city: e.target.value})}
+                      />
+                      <input
+                        placeholder="Cod poștal"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                        value={newCust.billing_zip}
+                        onChange={e => setNewCust({...newCust, billing_zip: e.target.value})}
+                      />
+                    </div>
+                    <input
+                      placeholder="Țara"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                      value={newCust.billing_country}
+                      onChange={e => setNewCust({...newCust, billing_country: e.target.value})}
+                    />
+                  </div>
                 </>
               ) : (
                 <>
@@ -284,12 +338,50 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
                       value={newCust.contact_name}
                       onChange={e => setNewCust({...newCust, contact_name: e.target.value})}
                     />
-                    <input 
-                      placeholder="Telefon Firmă" 
+                    <input
+                      placeholder="Telefon Firmă"
                       className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
                       value={newCust.contact_phone}
                       onChange={e => setNewCust({...newCust, contact_phone: e.target.value})}
                     />
+                    <input
+                      type="email"
+                      placeholder="Email Firmă *"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                      value={newCust.contact_email}
+                      onChange={e => setNewCust({...newCust, contact_email: e.target.value})}
+                    />
+
+                    {/* Adresa Firma */}
+                    <div className="pt-2 border-t border-slate-100">
+                      <p className="text-xs font-semibold text-slate-700 mb-2">Adresă sediu social</p>
+                      <input
+                        placeholder="Strada, nr., bloc, ap."
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25 mb-2"
+                        value={newCust.billing_line1}
+                        onChange={e => setNewCust({...newCust, billing_line1: e.target.value})}
+                      />
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <input
+                          placeholder="Oraș"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                          value={newCust.billing_city}
+                          onChange={e => setNewCust({...newCust, billing_city: e.target.value})}
+                        />
+                        <input
+                          placeholder="Cod poștal"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                          value={newCust.billing_zip}
+                          onChange={e => setNewCust({...newCust, billing_zip: e.target.value})}
+                        />
+                      </div>
+                      <input
+                        placeholder="Țara"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-500 caret-slate-950 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                        value={newCust.billing_country}
+                        onChange={e => setNewCust({...newCust, billing_country: e.target.value})}
+                      />
+                    </div>
                 </>
               )}
             </div>

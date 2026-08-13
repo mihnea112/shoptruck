@@ -12,7 +12,7 @@ function json(data: any, status = 200) {
 
 export async function GET(req: Request) {
   try {
-    await requireStaff(req, ["admin", "sales_rep"]);
+    await requireStaff(req, ["admin", "sales", "sales_rep", "warehouse", "warehouse_op"]);
 
     const rows = await sql`
       SELECT

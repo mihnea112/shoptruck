@@ -27,6 +27,12 @@ export function injectUnsubscribeLink(
 ): string {
   const unsubscribeUrl = generateUnsubscribeUrl(contactId, appUrl);
 
+  // Replace placeholder if present in the template
+  if (html.includes("[UNSUBSCRIBE_LINK]")) {
+    return html.replaceAll("[UNSUBSCRIBE_LINK]", unsubscribeUrl);
+  }
+
+  // Fallback: append footer
   const footer = `
 <p style="font-size:11px;color:#999;text-align:center;margin-top:32px;">
   Nu mai doriți să primiți emailuri?
@@ -34,7 +40,6 @@ export function injectUnsubscribeLink(
 </p>
 `;
 
-  // Append to end of HTML, before closing tags if present
   if (html.includes("</body>")) {
     return html.replace("</body>", footer + "</body>");
   } else if (html.includes("</html>")) {

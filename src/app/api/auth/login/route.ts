@@ -82,7 +82,11 @@ export async function POST(req: Request) {
 
   const ROLE_DEFAULT_ROUTE: Record<string, string> = {
     admin: "/admin",
-    sales_rep: "/vanzari",
+    sales: "/admin/oferte",
+    sales_rep: "/admin/oferte",
+    marketing: "/admin/email/campaigns",
+    warehouse: "/admin/depozit",
+    warehouse_op: "/admin/depozit/stoc",
   };
 
   const safeNext = (next: string | null) => {
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
   };
 
   const landingRouteForRoles = (r: string[]) => {
-    const priority = ["admin", "sales_rep"];
+    const priority = ["admin", "sales", "sales_rep", "marketing", "warehouse", "warehouse_op"];
     for (const role of priority) if (r.includes(role) && ROLE_DEFAULT_ROUTE[role]) return ROLE_DEFAULT_ROUTE[role];
     for (const role of r) if (ROLE_DEFAULT_ROUTE[role]) return ROLE_DEFAULT_ROUTE[role];
     return "/";

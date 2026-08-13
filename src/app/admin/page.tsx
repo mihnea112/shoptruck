@@ -57,13 +57,15 @@ export default async function AdminHomePage() {
   if (!user) redirect("/login?next=/admin");
   if (user.kind !== "staff") redirect("/");
 
-  const ok = hasAnyRole(user, ["ADMIN", "SALES_REP"]);
+  const ok = hasAnyRole(user, ["admin", "sales", "sales_rep", "marketing", "warehouse", "warehouse_op"]);
   if (!ok) redirect("/");
 
-  const isAdmin = user.roles.includes("ADMIN");
-  const isSales = user.roles.includes("SALES_REP");
+  const isAdmin = hasAnyRole(user, ["admin"]);
+  const isSales = hasAnyRole(user, ["sales", "sales_rep"]);
+  const isMarketing = hasAnyRole(user, ["marketing"]);
+  const isWarehouse = hasAnyRole(user, ["warehouse", "warehouse_op"]);
 
-  const roleLabel = isAdmin ? "Administrator" : isSales ? "Agent vânzări" : "Personal";
+  const roleLabel = isAdmin ? "Administrator" : isSales ? "Vânzări" : isMarketing ? "Marketing" : isWarehouse ? "Depozit" : "Personal";
 
   // --- Stats (safe: based on tables you already use: product/category/brand/tax_rate) ---
   const [
@@ -198,9 +200,9 @@ export default async function AdminHomePage() {
             />
             {isAdmin ? (
               <QuickAction
-                href="/admin/agenti"
-                title="Agenți vânzări"
-                desc="Creează și gestionează conturi de tip SALES_REP."
+                href="/admin/acces"
+                title="Gestionare acces"
+                desc="Atribuie roluri utilizatorilor (admin, vânzări, marketing, depozit)."
               />
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5">

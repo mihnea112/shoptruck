@@ -115,7 +115,7 @@ export async function GET(req: Request) {
   try {
     debugLog("api/admin/products GET", { url: req.url, method: "GET" });
     // Allow read access for ADMIN and SALES_REP
-    const me = await requireStaff(req, ["admin", "sales_rep"]);
+    const me = await requireStaff(req, ["admin", "sales", "sales_rep"]);
     debugLog("api/admin/products GET auth ok", { user_id: (me as any)?.userId });
 
     const { searchParams } = new URL(req.url);

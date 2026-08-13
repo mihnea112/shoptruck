@@ -11,6 +11,11 @@ export default async function AccountPage() {
     redirect(`/login?next=/account`);
   }
 
+  // Staff users should use /admin, not /account
+  if (user.kind === "staff") {
+    redirect("/admin");
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <MainHeader />

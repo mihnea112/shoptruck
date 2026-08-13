@@ -25,7 +25,7 @@ export async function GET(req: Request) {
         p.is_active,
         p.created_at
       FROM profile p
-      WHERE p.roles && ARRAY['ADMIN','SALES_REP','WAREHOUSE_OP']::text[]
+      WHERE p.roles && ARRAY['ADMIN','SALES','MARKETING','WAREHOUSE','SALES_REP','WAREHOUSE_OP']::text[]
       ORDER BY p.full_name ASC, p.email ASC
     `;
 
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       ? body.roles
           .map((r: any) => String(r).trim().toUpperCase())
           .filter(Boolean)
-      : ["SALES_REP"];
+      : ["SALES"];
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return json({ ok: false, error: "Email invalid." }, 400);

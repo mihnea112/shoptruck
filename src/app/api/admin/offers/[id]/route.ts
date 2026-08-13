@@ -22,7 +22,7 @@ const safeUUID = (val: any) =>
 
 // GET SINGLE OFFER
 export async function GET(req: NextRequest, ctx: Ctx) {
-  await requireStaff(req, ["ADMIN", "SALES_REP"]);
+  await requireStaff(req, ["admin", "sales", "sales_rep"]);
   const id = await getId(ctx);
 
   try {
@@ -205,7 +205,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
 // DELETE
 export async function DELETE(req: NextRequest, ctx: Ctx) {
-  await requireStaff(req, ["ADMIN", "SALES_REP"]);
+  await requireStaff(req, ["admin", "sales", "sales_rep"]);
   const id = await getId(ctx);
 
   try {
@@ -222,7 +222,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
 }
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const user = await requireStaff(req, ["ADMIN", "SALES_REP"]);
+  const user = await requireStaff(req, ["admin", "sales", "sales_rep"]);
   const id = await getId(ctx);
 
   try {

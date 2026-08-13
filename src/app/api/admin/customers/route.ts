@@ -117,6 +117,12 @@ export async function POST(req: Request) {
     const isVatPayerRaw = toBool(body?.is_vat_payer ?? body?.isVatPayer);
     const isVatPayer = isVatPayerRaw ?? false;
 
+    // Address fields
+    const billingLine1 = cleanText(body?.billing_line1 ?? body?.billingLine1, 300);
+    const billingCity = cleanText(body?.billing_city ?? body?.billingCity, 100);
+    const billingZip = cleanText(body?.billing_zip ?? body?.billingZip, 20);
+    const billingCountry = cleanText(body?.billing_country ?? body?.billingCountry, 100) ?? "Romania";
+
     if (!displayName || displayName.length < 2) {
       return json({ ok: false, error: "Numele clientului este obligatoriu." }, 400);
     }
@@ -145,6 +151,10 @@ export async function POST(req: Request) {
           tax_id,
           reg_no,
           is_vat_payer,
+          billing_line1,
+          billing_city,
+          billing_zip,
+          billing_country,
           updated_at
         )
         VALUES (
@@ -156,6 +166,10 @@ export async function POST(req: Request) {
           ${taxId},
           ${regNo},
           ${isVatPayer},
+          ${billingLine1},
+          ${billingCity},
+          ${billingZip},
+          ${billingCountry},
           now()
         )
         RETURNING id
@@ -164,7 +178,7 @@ export async function POST(req: Request) {
       const id = (rows as any[])?.[0]?.id as string | undefined;
       if (!id) return json({ ok: false, error: "Eroare internă." }, 500);
 
-      return json({ ok: true, id }, 201);
+      return json({ ok: true, id, customerId: id }, 201);
     } catch (e: any) {
       // ux_account_tax_id can throw 23505
       const msg =

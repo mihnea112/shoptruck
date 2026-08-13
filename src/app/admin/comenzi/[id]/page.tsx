@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import InvoiceGenerateButton from "@/components/admin/InvoiceGenerateButton";
 
 // ─── Types ───────────────────────────────────────────────────
 type OrderStatus =
@@ -395,6 +396,7 @@ export default function OrderDetailPage() {
           {/* Actions */}
           {actions.length > 0 && (
             <div className="flex flex-wrap gap-2">
+              <InvoiceGenerateButton orderId={id} />
               {actions.map((action) => (
                 <button
                   key={action.endpoint}

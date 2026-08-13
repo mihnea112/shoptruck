@@ -174,17 +174,21 @@ export default async function AdminLayout({
   if (!user) redirect("/login?next=/admin");
 
   const isAdmin = user.roles.includes("ADMIN");
-  const isWarehouseOp = user.roles.includes("WAREHOUSE_OP");
+  const isSales = user.roles.includes("SALES");
+  const isMarketing = user.roles.includes("MARKETING");
+  const isWarehouse = user.roles.includes("WAREHOUSE");
+  // legacy compat
+  const isWarehouseOp = user.roles.includes("WAREHOUSE_OP") || isWarehouse;
 
   // Where the user should land if they don't have access to /admin
   const homePath = user.defaultRoute || "/";
 
-  // This layout is for /admin routes only.
-  // Allow access if:
-  // - role ADMIN or WAREHOUSE_OP exists, OR
-  // - their default route points into /admin
+  // Allow access if any known staff role or default route into /admin
   const canAccessAdmin =
     isAdmin ||
+    isSales ||
+    isMarketing ||
+    isWarehouse ||
     isWarehouseOp ||
     homePath === "/admin" ||
     homePath.startsWith("/admin/");
@@ -192,7 +196,13 @@ export default async function AdminLayout({
 
   const roleLabel = isAdmin
     ? "Administrator"
-    : (user.roles[0] || "PERSONAL").replace(/_/g, " ");
+    : isSales
+      ? "Vânzări"
+      : isMarketing
+        ? "Marketing"
+        : isWarehouse || isWarehouseOp
+          ? "Depozit"
+          : (user.roles[0] || "PERSONAL").replace(/_/g, " ");
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -214,7 +224,7 @@ export default async function AdminLayout({
           {/* ✅ Scrollable menu area */}
           <div className="flex-1 overflow-y-auto">
             <nav className="space-y-4 px-0 py-4">
-              {/* GENERAL */}
+              {/* GENERAL — visible to all staff */}
               <NavGroup title="General" defaultOpen>
                 <NavItem
                   href="/admin"
@@ -236,91 +246,56 @@ export default async function AdminLayout({
                     </svg>
                   }
                 />
+              </NavGroup>
 
-                <NavItem
-                  href="/admin/comenzi"
-                  label="Comenzi"
-                  description="Vizualizare, procesare, facturare"
-                  icon={
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      className="h-5 w-5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M6 2h12l3 7H3l3-7z" />
-                      <path d="M3 9h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
-                      <path d="M9 13h6" />
-                    </svg>
-                  }
-                />
-
-                <NavItem
-                  href="/admin/oferte"
-                  label="Oferte"
-                  description="Cotații / proforme"
-                  icon={
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      className="h-5 w-5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M7 3h10a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z" />
-                      <path d="M8 7h8" />
-                      <path d="M8 11h8" />
-                      <path d="M8 15h5" />
-                    </svg>
-                  }
-                />
-
-                {isAdmin ? (
-                  <>
-                    <NavItem
-                      href="/admin/facturi"
-                      label="Facturi"
-                      description="Vizualizare și export"
-                      icon={
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="h-5 w-5"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M7 3h10a2 2 0 0 1 2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5a2 2 0 0 1 2-2z" />
-                          <path d="M8 8h8" />
-                          <path d="M8 12h8" />
-                          <path d="M8 16h6" />
-                        </svg>
-                      }
-                    />
+              {/* VÂNZĂRI — admin + sales */}
+              {isAdmin || isSales ? (
+                <NavGroup title="Vânzări" defaultOpen>
+                  <NavItem
+                    href="/admin/comenzi"
+                    label="Comenzi"
+                    description="Vizualizare, procesare, facturare"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M6 2h12l3 7H3l3-7z" />
+                        <path d="M3 9h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
+                        <path d="M9 13h6" />
+                      </svg>
+                    }
+                  />
+                  <NavItem
+                    href="/admin/oferte"
+                    label="Oferte"
+                    description="Cotații / proforme"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M7 3h10a2 2 0 0 1 2 2v16l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2z" />
+                        <path d="M8 7h8" />
+                        <path d="M8 11h8" />
+                        <path d="M8 15h5" />
+                      </svg>
+                    }
+                  />
+                  <NavItem
+                    href="/admin/facturi"
+                    label="Facturi"
+                    description="Vizualizare și export"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M7 3h10a2 2 0 0 1 2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5a2 2 0 0 1 2-2z" />
+                        <path d="M8 8h8" />
+                        <path d="M8 12h8" />
+                        <path d="M8 16h6" />
+                      </svg>
+                    }
+                  />
+                  {isAdmin ? (
                     <NavItem
                       href="/admin/retururi"
                       label="Retururi"
                       description="RMA / anulări"
                       icon={
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="h-5 w-5"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
+                        <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M3 12a9 9 0 0 1 15-6" />
                           <path d="M18 6v6h-6" />
                           <path d="M21 12a9 9 0 0 1-15 6" />
@@ -328,144 +303,90 @@ export default async function AdminLayout({
                         </svg>
                       }
                     />
-                  </>
-                ) : null}
-              </NavGroup>
+                  ) : null}
+                </NavGroup>
+              ) : null}
 
-              {/* CATALOG */}
-              <NavGroup title="Catalog" defaultOpen>
-                <NavItem
-                  href="/admin/produse"
-                  label="Produse"
-                  description="Catalog, prețuri, stoc"
-                  icon={
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      className="h-5 w-5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z" />
-                      <path d="M3.3 7l8.7 5 8.7-5" />
-                      <path d="M12 22V12" />
-                    </svg>
-                  }
-                />
+              {/* CATALOG — admin + sales (view) */}
+              {isAdmin || isSales ? (
+                <NavGroup title="Catalog" defaultOpen>
+                  <NavItem
+                    href="/admin/produse"
+                    label="Produse"
+                    description="Catalog, prețuri, stoc"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z" />
+                        <path d="M3.3 7l8.7 5 8.7-5" />
+                        <path d="M12 22V12" />
+                      </svg>
+                    }
+                  />
+                  <NavItem
+                    href="/admin/categorii"
+                    label="Categorii & Branduri"
+                    description="Ierarhie și organizare"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M4 4h7v7H4V4z" />
+                        <path d="M13 4h7v7h-7V4z" />
+                        <path d="M4 13h7v7H4v-7z" />
+                        <path d="M20.5 14.5l-2.6-2.6a2 2 0 0 0-1.4-.6H15a2 2 0 0 0-2 2v1.6c0 .5.2 1 .6 1.4l2.6 2.6a2 2 0 0 0 2.8 0l1.5-1.5a2 2 0 0 0 0-2.8z" />
+                        <path d="M16.2 13.8h.01" />
+                      </svg>
+                    }
+                  />
+                  {isAdmin ? (
+                    <>
+                      <NavItem
+                        href="/admin/reduceri"
+                        label="Gestionare Reduceri"
+                        description="Discounturi și promoții"
+                        icon={
+                          <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M6 9.5h12" />
+                            <path d="M3 9a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-6z" />
+                            <path d="M9 14l6-4" />
+                          </svg>
+                        }
+                      />
+                      <NavItem
+                        href="/admin/import"
+                        label="Import Produse"
+                        description="Importă din XML"
+                        icon={
+                          <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                        }
+                      />
+                      <NavItem
+                        href="/admin/tva"
+                        label="TVA"
+                        description="Taxe / cote"
+                        icon={
+                          <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M12 1v22" />
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6" />
+                          </svg>
+                        }
+                      />
+                    </>
+                  ) : null}
+                </NavGroup>
+              ) : null}
 
-                <NavItem
-                  href="/admin/categorii"
-                  label="Categorii & Branduri"
-                  description="Ierarhie și organizare"
-                  icon={
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      className="h-5 w-5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M4 4h7v7H4V4z" />
-                      <path d="M13 4h7v7h-7V4z" />
-                      <path d="M4 13h7v7H4v-7z" />
-                      <path d="M20.5 14.5l-2.6-2.6a2 2 0 0 0-1.4-.6H15a2 2 0 0 0-2 2v1.6c0 .5.2 1 .6 1.4l2.6 2.6a2 2 0 0 0 2.8 0l1.5-1.5a2 2 0 0 0 0-2.8z" />
-                      <path d="M16.2 13.8h.01" />
-                    </svg>
-                  }
-                />
-
-                {isAdmin ? (
-                  <>
-                    <NavItem
-                      href="/admin/reduceri"
-                      label="Gestionare Reduceri"
-                      description="Discounturi și promoții"
-                      icon={
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="h-5 w-5"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M6 9.5h12" />
-                          <path d="M3 9a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-6z" />
-                          <path d="M9 14l6-4" />
-                        </svg>
-                      }
-                    />
-                    <NavItem
-                      href="/admin/import"
-                      label="Import Produse"
-                      description="Importă din XML"
-                      icon={
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="h-5 w-5"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          <polyline points="7 10 12 15 17 10" />
-                          <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                      }
-                    />
-                    <NavItem
-                      href="/admin/tva"
-                      label="TVA"
-                      description="Taxe / cote"
-                      icon={
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="h-5 w-5"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M12 1v22" />
-                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6" />
-                        </svg>
-                      }
-                    />
-                  </>
-                ) : null}
-              </NavGroup>
-
-              {/* MARKETING */}
-              {isAdmin ? (
-                <NavGroup title="Marketing" defaultOpen={false}>
+              {/* MARKETING — admin + marketing */}
+              {isAdmin || isMarketing ? (
+                <NavGroup title="Marketing" defaultOpen={isMarketing}>
                   <NavItem
                     href="/admin/email/campaigns"
                     label="Campanii Email"
-                    description="Cree și trimite campaniile de email"
+                    description="Creează și trimite campaniile de email"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <rect x="2" y="4" width="20" height="16" rx="2" />
                         <path d="M22 4l-10 8L2 4" />
                       </svg>
@@ -476,16 +397,7 @@ export default async function AdminLayout({
                     label="Contacte Email"
                     description="Gestionează lista de contacte"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                         <circle cx="12" cy="7" r="4" />
                       </svg>
@@ -494,24 +406,15 @@ export default async function AdminLayout({
                 </NavGroup>
               ) : null}
 
-              {/* Management */}
-              {isAdmin ? (
-                <NavGroup title="Management" defaultOpen={false}>
+              {/* DEPOZIT & STOC — admin + warehouse */}
+              {isAdmin || isWarehouse || isWarehouseOp ? (
+                <NavGroup title="Depozit & Stoc" defaultOpen={isWarehouse || isWarehouseOp}>
                   <NavItem
                     href="/admin/depozit"
                     label="Depozite"
                     description="Gestionare locații"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M3 10l9-7 9 7" />
                         <path d="M5 10v10h14V10" />
                         <path d="M9 20V14h6v6" />
@@ -519,23 +422,27 @@ export default async function AdminLayout({
                     }
                   />
                   <NavItem
-                    href="/admin/stoc"
+                    href="/admin/depozit/stoc"
                     label="Stoc"
-                    description="Disponibil / rezervat"
+                    description="Vizualizare și modificare stoc"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M21 8l-9-5-9 5 9 5 9-5z" />
                         <path d="M3 8v8l9 5 9-5V8" />
                         <path d="M12 13v8" />
+                      </svg>
+                    }
+                  />
+                  <NavItem
+                    href="/admin/depozit/receptie-marfa"
+                    label="Recepție marfă"
+                    description="Încarcă PDF cu marfa primită"
+                    icon={
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <path d="M14 2v6h6" />
+                        <path d="M12 18v-6" />
+                        <path d="M9 15l3 3 3-3" />
                       </svg>
                     }
                   />
@@ -544,16 +451,7 @@ export default async function AdminLayout({
                     label="Transferuri"
                     description="Mutări între depozite"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M7 7h10" />
                         <path d="M7 7l3-3" />
                         <path d="M7 7l3 3" />
@@ -568,16 +466,7 @@ export default async function AdminLayout({
                     label="Mișcări stoc"
                     description="Audit / COGS"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M4 19V5" />
                         <path d="M4 19h16" />
                         <path d="M8 15l3-3 3 2 4-5" />
@@ -589,16 +478,7 @@ export default async function AdminLayout({
                     label="Furnizori"
                     description="Parteneri aprovizionare"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M3 9l9-6 9 6v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
                         <path d="M9 22V12h6v10" />
                       </svg>
@@ -609,16 +489,7 @@ export default async function AdminLayout({
                     label="Comenzi furnizor"
                     description="PO / aprovizionare"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M6 2h12l3 7H3l3-7z" />
                         <path d="M3 9h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
                         <path d="M8 13h8" />
@@ -630,16 +501,7 @@ export default async function AdminLayout({
                     label="Recepții"
                     description="GRN / intrări stoc"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z" />
                         <path d="M8 12h8" />
                         <path d="M12 8v8" />
@@ -651,16 +513,7 @@ export default async function AdminLayout({
                     label="Facturi furnizor"
                     description="AP / plăți furnizori"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M7 3h10a2 2 0 0 1 2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5a2 2 0 0 1 2-2z" />
                         <path d="M8 8h8" />
                         <path d="M8 12h8" />
@@ -671,51 +524,15 @@ export default async function AdminLayout({
                 </NavGroup>
               ) : null}
 
-              {/* DEPOZIT — visible to warehouse ops and admins */}
-              {isAdmin || isWarehouseOp ? (
-                <NavGroup title="Depozitul meu" defaultOpen={true}>
-                  <NavItem
-                    href="/admin/depozit/stoc"
-                    label="Stoc"
-                    description="Vizualizare și modificare stoc"
-                    icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M21 8l-9-5-9 5 9 5 9-5z" />
-                        <path d="M3 8v8l9 5 9-5V8" />
-                        <path d="M12 13v8" />
-                      </svg>
-                    }
-                  />
-                </NavGroup>
-              ) : null}
-
-              {/* ACCES */}
+              {/* ACCES — admin only */}
               {isAdmin ? (
                 <NavGroup title="Acces" defaultOpen={false}>
                   <NavItem
-                    href="/admin/agenti"
-                    label="Agenți"
-                    description="Conturi agent vânzări"
+                    href="/admin/acces"
+                    label="Gestionare acces"
+                    description="Roluri și permisiuni utilizatori"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                         <circle cx="9" cy="7" r="4" />
                         <path d="M19 8v6" />
@@ -728,16 +545,7 @@ export default async function AdminLayout({
                     label="Setări magazin"
                     description="Configurări generale"
                     icon={
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
                         <path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.5-2-3.5-2.4 1a8 8 0 0 0-1.7-1L15 3h-6l-.4 2.5a8 8 0 0 0-1.7 1L4.5 6 2.5 9.5 4.5 11a7.9 7.9 0 0 0 .1 2L2.5 14.5l2 3.5 2.4-1a8 8 0 0 0 1.7 1L9 21h6l.4-2.5a8 8 0 0 0 1.7-1l2.4 1 2-3.5-2.1-1.5z" />
                       </svg>

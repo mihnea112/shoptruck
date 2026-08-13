@@ -33,7 +33,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireStaff(req, ["ADMIN", "SALES_REP"]);
+    await requireStaff(req, ["admin", "sales", "sales_rep"]);
     const { id: offerId } = await ctx.params;
 
     // Fetch offer with all details

@@ -67,7 +67,7 @@ type OfferRow = {
 // 1) LIST OFFERS (GET)
 export async function GET(req: NextRequest) {
   try {
-    await requireStaff(req, ["ADMIN", "SALES_REP"]);
+    await requireStaff(req, ["admin", "sales", "sales_rep"]);
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") || "").trim();
@@ -166,7 +166,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireStaff>>;
   try {
-    user = await requireStaff(req, ["ADMIN", "SALES_REP"]);
+    user = await requireStaff(req, ["admin", "sales", "sales_rep"]);
   } catch (err: any) {
     console.error("/api/admin/offers POST auth failed", err);
     const p = errPayload(err);

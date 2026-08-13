@@ -400,7 +400,7 @@ function UsersTab({
     try {
       const [whData, profData] = await Promise.all([
         apiJson<any>(`/api/admin/warehouses/${warehouseId}`),
-        apiJson<any>(`/api/admin/sales-reps`),
+        apiJson<any>(`/api/admin/acces`),
       ]);
       setUsers(whData.users || []);
       setAll(profData.items || []);

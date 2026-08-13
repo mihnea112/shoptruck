@@ -148,6 +148,70 @@ export default function EditOfferPage({
   const [notes, setNotes] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
+  // --- FETCH OFFER DATA ---
+  useEffect(() => {
+    async function loadOffer() {
+      try {
+        const res = await fetch(`/api/admin/offers/${offerId}`);
+        const data = await res.json();
+        if (!data.ok) {
+          alert("Eroare la încărcare: " + (data.error || "Oferta nu există"));
+          return;
+        }
+
+        const d = data.data;
+
+        // Customer
+        if (d.customer) {
+          setCustomer(d.customer);
+        }
+
+        // Vehicle
+        if (d.vehicle) {
+          setVehicle({
+            id: d.vehicle.id || "",
+            chassis_vin: d.vehicle.chassis_vin || "",
+            plate_no: d.vehicle.plate_no || "",
+            make: d.vehicle.make || "",
+            model: d.vehicle.model || "",
+            series: d.vehicle.series || "",
+            engine_code: d.vehicle.engine_code || "",
+            year: d.vehicle.year || new Date().getFullYear(),
+          });
+        }
+
+        // Notes & valid until
+        setNotes(d.notes || "");
+        setValidUntil(d.validUntil || "");
+
+        // Items
+        if (Array.isArray(d.items) && d.items.length > 0) {
+          setItems(
+            d.items.map((it: any, idx: number) => ({
+              uiId: Date.now() + idx,
+              offerItemId: it.offerItemId || it.id || null,
+              productId: it.productId || it.product_id || undefined,
+              name: it.name || "",
+              qty: Number(it.qty ?? it.quantity ?? 1),
+              price: Number(it.price ?? it.unit_price_net ?? 0),
+              basePrice: Number(it.price ?? it.unit_price_net ?? 0),
+              priceDraft: Number(it.price ?? it.unit_price_net ?? 0).toFixed(2),
+              priceError: null,
+              tax: Number(it.tax ?? (it.tax_rate != null ? (it.tax_rate <= 1 ? it.tax_rate * 100 : it.tax_rate) : 19)),
+            })),
+          );
+        }
+      } catch (e) {
+        console.error("Load offer error:", e);
+        alert("Eroare la încărcarea ofertei.");
+      } finally {
+        setFetching(false);
+      }
+    }
+
+    loadOffer();
+  }, [offerId]);
+
   // TVA always included
   const includeVat = true;
 

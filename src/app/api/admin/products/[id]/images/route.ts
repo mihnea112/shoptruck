@@ -9,7 +9,7 @@ function json(data: any, status = 200) {
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    await requireStaff(req, ["ADMIN", "SALES_REP"]); // view ok
+    await requireStaff(req, ["admin", "sales", "sales_rep"]); // view ok
     const { id: productId } = await ctx.params;
 
     const rows = await sql`
