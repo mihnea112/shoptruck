@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireWarehouse } from "@/lib/auth/api";
 import { sql } from "@/lib/db";
-// @ts-ignore — pdf-parse has no type declarations
-import pdfParse from "pdf-parse";
+// @ts-ignore — use /lib path to skip pdf-parse's test file auto-load
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
