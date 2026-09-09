@@ -38,6 +38,7 @@ export default function FacturiPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const load = useCallback(async (search = "") => {
     setLoading(true);
@@ -68,6 +69,21 @@ export default function FacturiPage() {
       alert(e.message || "Eroare la generarea PDF-ului.");
     } finally {
       setDownloading(null);
+    }
+  }
+
+  async function deleteInvoice(inv: Invoice) {
+    if (!confirm(`Stergi factura ${inv.series}/${inv.number}?`)) return;
+    setDeleting(inv.id);
+    try {
+      const res = await fetch(`/api/admin/invoices?id=${inv.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) { alert(data.error || "Eroare"); return; }
+      setInvoices((prev) => prev.filter((i) => i.id !== inv.id));
+    } catch (e: any) {
+      alert(e.message || "Eroare la stergere.");
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -143,13 +159,22 @@ export default function FacturiPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-700">{inv.payment_method}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => downloadPdf(inv.id)}
-                      disabled={downloading === inv.id}
-                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition disabled:opacity-50"
-                    >
-                      {downloading === inv.id ? "..." : "PDF"}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => downloadPdf(inv.id)}
+                        disabled={downloading === inv.id}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition disabled:opacity-50"
+                      >
+                        {downloading === inv.id ? "..." : "PDF"}
+                      </button>
+                      <button
+                        onClick={() => deleteInvoice(inv)}
+                        disabled={deleting === inv.id}
+                        className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                      >
+                        {deleting === inv.id ? "..." : "Sterge"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

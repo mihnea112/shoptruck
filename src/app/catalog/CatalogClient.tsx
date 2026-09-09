@@ -20,6 +20,10 @@ type Product = {
   discount_price: number | null;
   discount_active: boolean;
   discount_percentage: number;
+  class_discount_pct?: number;
+  class_discount_price?: number | null;
+  final_price?: number;
+  total_discount_pct?: number;
   stock_available: number;
   primary_image_url: string | null;
 };
@@ -116,9 +120,18 @@ function ProductCard({ p }: { p: Product }) {
         </div>
 
         {/* Discount badge */}
-        {p.discount_active && p.discount_price && (
-          <div className="absolute right-3 top-3 rounded-lg bg-red-600 px-2 py-1 text-sm font-bold text-white">
-            -{p.discount_percentage}%
+        {(p.total_discount_pct ?? p.discount_percentage) > 0 && (
+          <div className="absolute right-3 top-3 flex flex-col gap-1 items-end">
+            {p.discount_active && p.discount_price && (
+              <div className="rounded-lg bg-red-600 px-2 py-1 text-sm font-bold text-white">
+                -{p.discount_percentage}%
+              </div>
+            )}
+            {(p.class_discount_pct ?? 0) > 0 && (
+              <div className="rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white">
+                Clasa -{p.class_discount_pct}%
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -139,23 +152,32 @@ function ProductCard({ p }: { p: Product }) {
           </div>
         )}
         <div className="mt-3 flex flex-col gap-2">
-          {p.discount_active && p.discount_price ? (
-            <div className="space-y-1">
-              <div className="text-sm font-medium text-slate-500 line-through">
+          {(() => {
+            const finalPrice = p.final_price ?? (p.discount_active && p.discount_price ? p.discount_price : p.price_gross);
+            const hasAnyDiscount = finalPrice < p.price_gross;
+            const savings = p.price_gross - finalPrice;
+
+            if (hasAnyDiscount) {
+              return (
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-slate-500 line-through">
+                    {fmtRON(p.price_gross)}
+                  </div>
+                  <div className="text-lg font-bold text-green-600">
+                    {fmtRON(finalPrice)}
+                  </div>
+                  <div className="text-xs text-emerald-600 font-medium">
+                    💚 Economisești {fmtRON(savings)}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div className="text-lg font-bold text-slate-900">
                 {fmtRON(p.price_gross)}
               </div>
-              <div className="text-lg font-bold text-green-600">
-                {fmtRON(p.discount_price)}
-              </div>
-              <div className="text-xs text-emerald-600 font-medium">
-                💚 Economisesti {fmtRON(p.price_gross - p.discount_price)}
-              </div>
-            </div>
-          ) : (
-            <div className="text-lg font-bold text-slate-900">
-              {fmtRON(p.price_gross)}
-            </div>
-          )}
+            );
+          })()}
 
           <div
             className="rounded-full bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900

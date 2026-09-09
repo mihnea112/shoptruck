@@ -10,6 +10,8 @@ export interface CartItem {
   brand_name: string | null;
   primary_code: string | null;
   price_gross: number;
+  final_price?: number;
+  class_discount_pct?: number;
   primary_image_path: string | null;
   quantity: number;
   added_at: string;
@@ -42,12 +44,13 @@ export function useCart(): UseCartReturn {
 
   const calculateTotal = (cartItems: CartItem[]): CartTotal => {
     const gross = cartItems.reduce(
-      (sum, item) => sum + item.price_gross * item.quantity,
+      (sum, item) => sum + (item.final_price ?? item.price_gross) * item.quantity,
       0
     );
 
     const net = cartItems.reduce((sum, item) => {
-      const netPrice = item.price_gross / 1.19;
+      const effectivePrice = item.final_price ?? item.price_gross;
+      const netPrice = effectivePrice / 1.19;
       return sum + netPrice * item.quantity;
     }, 0);
 

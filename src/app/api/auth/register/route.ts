@@ -1,6 +1,7 @@
 // src/app/api/auth/register/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sql } from "@/lib/db";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -184,32 +185,94 @@ export async function POST(req: Request) {
 
     supabaseUserId = signUpData.user.id;
 
-    // Create profile entry (customers have empty roles, only staff/admin have roles)
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { error: profileError } = await supabaseAdmin
-      .from("profile")
-      .insert({
-        user_id: supabaseUserId,
-        email,
-        full_name: kind === "individual" ? displayName : null,
-        roles: [],
-        is_active: true,
-        kind: accountKind.toLowerCase(),
-        display_name: displayName,
-        legal_name: legalName,
-        phone,
-        tax_id: taxId,
-        reg_no: regNo,
-        notes,
-      });
+    // Check if an existing account matches this email/tax_id (admin-created before signup)
+    let linkedExisting = false;
+    try {
+      const existingAccount = await sql`
+        SELECT id FROM account
+        WHERE (LOWER(email) = ${email} AND user_id IS NULL)
+          ${taxId ? sql`OR (tax_id IS NOT NULL AND LOWER(tax_id) = LOWER(${taxId}) AND user_id IS NULL)` : sql``}
+        LIMIT 1
+      ` as any[];
 
-    if (profileError) {
-      console.error("Profile creation error:", profileError);
-      // Clean up user if profile creation failed
+      if (existingAccount.length > 0) {
+        // Link & update the existing account
+        await sql`
+          UPDATE account SET
+            user_id = ${supabaseUserId}::uuid,
+            display_name = COALESCE(display_name, ${displayName}),
+            legal_name = COALESCE(legal_name, ${legalName}),
+            full_name = COALESCE(full_name, ${kind === "individual" ? displayName : null}),
+            phone = COALESCE(phone, ${phone}),
+            tax_id = COALESCE(tax_id, ${taxId}),
+            reg_no = COALESCE(reg_no, ${regNo}),
+            roles = COALESCE(NULLIF(roles, ARRAY[]::TEXT[]), ARRAY[]::TEXT[]),
+            is_active = true,
+            updated_at = now()
+          WHERE id = ${existingAccount[0].id}::uuid
+        `;
+        linkedExisting = true;
+        console.log("Linked existing account", existingAccount[0].id, "to user", supabaseUserId);
+
+        // Also link partner if it exists for that account
+        await sql`
+          UPDATE partner SET account_id = ${supabaseUserId}::uuid
+          WHERE account_id = ${existingAccount[0].id}::uuid
+            AND NOT EXISTS (SELECT 1 FROM partner WHERE account_id = ${supabaseUserId}::uuid)
+        `;
+      }
+    } catch (linkErr) {
+      console.error("Account linking failed (non-critical):", linkErr);
+    }
+
+    // Create account entry if not linked above
+    if (!linkedExisting) {
       try {
-        await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
-      } catch {}
-      return json({ ok: false, error: "Eroare la crearea profilului. Încearcă din nou." }, 500);
+        await sql`
+          INSERT INTO account (
+            user_id, kind, display_name, legal_name, full_name,
+            email, phone, tax_id, reg_no, notes,
+            roles, is_active
+          ) VALUES (
+            ${supabaseUserId}::uuid, ${accountKind}, ${displayName}, ${legalName || displayName},
+            ${kind === "individual" ? displayName : null},
+            ${email}, ${phone}, ${taxId}, ${regNo}, ${notes},
+            ARRAY[]::TEXT[], true
+          )
+        `;
+      } catch (accErr) {
+        console.error("Account creation error:", accErr);
+        // Clean up auth user
+        try {
+          const supabaseAdminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          await supabaseAdminClient.auth.admin.deleteUser(supabaseUserId);
+        } catch {}
+        return json({ ok: false, error: "Eroare la crearea contului. Încearcă din nou." }, 500);
+      }
+    }
+
+    // Auto-create partner entry (if not already linked above)
+    try {
+      const existingPartner = await sql`
+        SELECT id FROM partner WHERE account_id = ${supabaseUserId}::uuid LIMIT 1
+      ` as any[];
+
+      if (existingPartner.length === 0) {
+        const partnerKind = accountKind === "COMPANY" ? "COMPANY" : "INDIVIDUAL";
+        await sql`
+          INSERT INTO partner (
+            partner_type, kind, display_name, legal_name,
+            email, phone, tax_id, reg_no,
+            account_id, credit_days, credit_limit
+          ) VALUES (
+            'CLIENT', ${partnerKind}, ${displayName}, ${legalName || displayName},
+            ${email}, ${phone}, ${taxId}, ${regNo},
+            ${supabaseUserId}::uuid, 0, 0
+          )
+        `;
+      }
+    } catch (partnerErr) {
+      console.error("Auto-create partner entry failed:", partnerErr);
     }
 
     // After registration, redirect to login so user can authenticate with Supabase

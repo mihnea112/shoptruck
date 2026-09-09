@@ -55,6 +55,20 @@ export async function GET(req: Request) {
   return json({ ok: true, items: rows });
 }
 
+/* ── DELETE: delete invoice ── */
+export async function DELETE(req: Request) {
+  await requireStaff(req, ["admin"]);
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id")?.trim();
+  if (!id) return json({ error: "id este obligatoriu." }, 400);
+
+  await sql`DELETE FROM invoice_item WHERE invoice_id = ${id}::uuid`;
+  await sql`DELETE FROM invoice WHERE id = ${id}::uuid`;
+
+  return json({ ok: true });
+}
+
 /* ── POST: create invoice from order ── */
 export async function POST(req: Request) {
   const user = await requireStaff(req, ["admin", "sales", "sales_rep"]);
@@ -67,8 +81,6 @@ export async function POST(req: Request) {
   const dueDays = Number(body?.dueDays) || null;
 
   if (!orderId) return json({ error: "orderId este obligatoriu." }, 400);
-  if (!deliveryMethod) return json({ error: "Modalitatea de livrare este obligatorie." }, 400);
-  if (!paymentMethod) return json({ error: "Modalitatea de plata este obligatorie." }, 400);
 
   // Fetch order with account + vehicle
   const orders = (await sql`
@@ -86,6 +98,23 @@ export async function POST(req: Request) {
 
   if (!orders.length) return json({ error: "Comanda nu a fost gasita." }, 404);
   const order = orders[0];
+
+  // Look up partner commercial defaults for this account
+  const partnerRows = (await sql`
+    SELECT delivery_method, payment_method, credit_days
+    FROM partner
+    WHERE account_id = ${order.account_id}::uuid AND is_active = true
+    LIMIT 1
+  `) as any[];
+  const partnerDefaults = partnerRows[0] || null;
+
+  // Use partner defaults as fallback when not provided in request
+  const finalDeliveryMethod = deliveryMethod || partnerDefaults?.delivery_method || "";
+  const finalPaymentMethod = paymentMethod || partnerDefaults?.payment_method || "";
+  const finalDueDays = dueDays ?? (partnerDefaults?.credit_days || null);
+
+  if (!finalDeliveryMethod) return json({ error: "Modalitatea de livrare este obligatorie." }, 400);
+  if (!finalPaymentMethod) return json({ error: "Modalitatea de plata este obligatorie." }, 400);
 
   const orderItems = (await sql`
     SELECT
@@ -119,8 +148,8 @@ export async function POST(req: Request) {
   const invoiceNumber = nextNumRows[0]?.next_num ?? 1;
 
   const invoiceDate = new Date().toISOString().split("T")[0];
-  const dueDate = dueDays
-    ? new Date(Date.now() + dueDays * 86400000).toISOString().split("T")[0]
+  const dueDate = finalDueDays
+    ? new Date(Date.now() + finalDueDays * 86400000).toISOString().split("T")[0]
     : null;
 
   // Tax rate from first item
@@ -139,7 +168,7 @@ export async function POST(req: Request) {
       ${order.vehicle_id || null}::uuid,
       ${invoiceType}, ${series}, ${invoiceNumber},
       ${invoiceDate}::date, ${dueDate}::date,
-      ${deliveryMethod}, ${paymentMethod},
+      ${finalDeliveryMethod}, ${finalPaymentMethod},
       ${order.plate_no || ""}, ${taxRatePct},
       ${totalNet}, ${totalTax}, ${totalGross},
       ${order.notes || null}, ${user.userId}::uuid

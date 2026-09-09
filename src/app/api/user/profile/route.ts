@@ -16,23 +16,53 @@ export async function PUT(req: Request) {
     const body = await req.json().catch(() => null);
     if (!body) return json({ error: "Cerere invalidă" }, 400);
 
-    const { firstName, lastName, email, phone, address, city, postalCode, country } = body;
+    const { firstName, lastName, email, phone, address, city, postalCode, country, companyName, legalName, taxId, regNo } = body;
 
-    await sql`
-      INSERT INTO user_profile (user_id, first_name, last_name, email, phone, address, city, postal_code, country)
-      VALUES (${user.userId}::uuid, ${firstName || null}, ${lastName || null}, ${email || null}, ${phone || null}, ${address || null}, ${city || null}, ${postalCode || null}, ${country || null})
-      ON CONFLICT (user_id)
-      DO UPDATE SET
-        first_name = ${firstName || null},
-        last_name = ${lastName || null},
+    const fullName = `${lastName || ""} ${firstName || ""}`.trim() || null;
+    const displayName = companyName || fullName || null;
+
+    // Update the account table (single source of truth)
+    const updated = await sql`
+      UPDATE account SET
+        display_name = ${displayName},
+        legal_name = ${legalName || displayName},
+        full_name = ${fullName},
         email = ${email || null},
         phone = ${phone || null},
-        address = ${address || null},
-        city = ${city || null},
-        postal_code = ${postalCode || null},
-        country = ${country || null},
+        tax_id = ${taxId || null},
+        reg_no = ${regNo || null},
+        billing_line1 = ${address || null},
+        billing_city = ${city || null},
+        billing_zip = ${postalCode || null},
+        billing_country = ${country || null},
         updated_at = now()
-    `;
+      WHERE user_id = ${user.userId}::uuid
+      RETURNING id
+    ` as any[];
+
+    if (updated.length === 0) {
+      // No account row yet — create one
+      await sql`
+        INSERT INTO account (user_id, kind, display_name, legal_name, full_name, email, phone, tax_id, reg_no, billing_line1, billing_city, billing_zip, billing_country, roles, is_active)
+        VALUES (
+          ${user.userId}::uuid,
+          ${companyName ? "COMPANY" : "INDIVIDUAL"},
+          ${displayName},
+          ${legalName || displayName},
+          ${fullName},
+          ${email || null},
+          ${phone || null},
+          ${taxId || null},
+          ${regNo || null},
+          ${address || null},
+          ${city || null},
+          ${postalCode || null},
+          ${country || null},
+          ARRAY[]::TEXT[],
+          true
+        )
+      `;
+    }
 
     return json({ ok: true, message: "Profil actualizat cu succes" }, 200);
   } catch (e: any) {
@@ -45,33 +75,53 @@ export async function GET(req: Request) {
   try {
     const user = await requireCustomer(req);
 
-    const rows = await sql`
-      SELECT first_name, last_name, email, phone, address, city, postal_code, country
-      FROM user_profile
+    const accRows = await sql`
+      SELECT id, kind, display_name, legal_name, full_name, email, phone, tax_id, reg_no,
+             billing_line1, billing_city, billing_zip, billing_country
+      FROM account
       WHERE user_id = ${user.userId}::uuid
       LIMIT 1
-    `;
+    ` as any[];
 
-    const profile = (rows as any[])[0] || {
-      first_name: null,
-      last_name: null,
-      email: user.email,
-      phone: null,
-      address: null,
-      city: null,
-      postal_code: null,
-      country: "România",
-    };
+    const acc = accRows[0];
+
+    if (!acc) {
+      return json({
+        firstName: "",
+        lastName: "",
+        email: user.email,
+        phone: "",
+        address: "",
+        city: "",
+        postalCode: "",
+        country: "România",
+        kind: null,
+        companyName: "",
+        legalName: "",
+        taxId: "",
+        regNo: "",
+      });
+    }
+
+    const nameParts = (acc.full_name || acc.display_name || "").trim().split(/\s+/);
+    const lastName = nameParts[0] || "";
+    const firstName = nameParts.slice(1).join(" ") || "";
+    const kindLower = (acc.kind || "").toLowerCase();
 
     return json({
-      firstName: profile.first_name,
-      lastName: profile.last_name,
-      email: profile.email,
-      phone: profile.phone,
-      address: profile.address,
-      city: profile.city,
-      postalCode: profile.postal_code,
-      country: profile.country,
+      firstName,
+      lastName,
+      email: acc.email || user.email,
+      phone: acc.phone || "",
+      address: acc.billing_line1 || "",
+      city: acc.billing_city || "",
+      postalCode: acc.billing_zip || "",
+      country: acc.billing_country || "România",
+      kind: kindLower || null,
+      companyName: kindLower === "company" ? acc.display_name : "",
+      legalName: acc.legal_name || "",
+      taxId: acc.tax_id || "",
+      regNo: acc.reg_no || "",
     });
   } catch (e: any) {
     console.error("[API user profile GET]", e);

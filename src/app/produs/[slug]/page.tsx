@@ -5,6 +5,7 @@ import { MainFooter } from "@/components/layout/MainFooter";
 import { ProductActions } from "@/components/product/ProductActions";
 import { EquivalentCodesSection } from "@/components/product/EquivalentCodesSection";
 import { SuggestedProductsCarousel } from "@/components/product/SuggestedProductsCarousel";
+import { ProductImageGallery } from "@/components/product/ProductImageGallery";
 
 type PublicImage = {
   storage_path: string;
@@ -42,6 +43,10 @@ type DbProduct = {
   discount_price: number | null;
   discount_active: boolean;
   discount_percentage: number;
+  class_discount_pct?: number;
+  class_discount_price?: number | null;
+  final_price?: number;
+  total_discount_pct?: number;
 
   primary_image_url: string | null;
   images: PublicImage[];
@@ -229,34 +234,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               {/* LEFT: image + small info */}
               <div className="space-y-6">
-                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm aspect-[5/4]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={mainImage}
-                    alt={product.name}
-                    className="w-full h-full object-contain"
-                    loading="lazy"
-                  />
-                </div>
-
-                {thumbs.length > 1 ? (
-                  <div className="grid grid-cols-6 gap-2">
-                    {thumbs.map((u) => (
-                      <div
-                        key={u}
-                        className="overflow-hidden rounded-xl border border-slate-200 bg-white aspect-[5/4]"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={u}
-                          alt="Imagine produs"
-                          className="w-full h-full object-contain"
-                          loading="lazy"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
+                <ProductImageGallery
+                  mainImage={mainImage}
+                  thumbs={thumbs}
+                  productName={product.name}
+                />
 
                 <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-xs text-slate-600 md:grid-cols-2">
                   <div className="space-y-1">
@@ -303,36 +285,50 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
                         Preț
                       </div>
-                      <div className="flex items-baseline gap-2">
-                        {product.discount_active && product.discount_price ? (
+                      {(() => {
+                        const finalPrice = product.final_price ?? (product.discount_active && product.discount_price ? product.discount_price : price);
+                        const hasAnyDiscount = price != null && finalPrice != null && finalPrice < price;
+                        const savings = price != null && finalPrice != null ? price - finalPrice : 0;
+
+                        return (
                           <>
-                            <span className="text-sm font-medium text-slate-500 line-through">
-                              {price == null ? "—" : formatRON(price)}
-                            </span>
-                            <span className="text-2xl font-semibold text-green-600">
-                              {formatRON(product.discount_price)}
-                            </span>
-                            <span className="text-sm font-bold text-white bg-red-600 px-2 py-1 rounded-lg">
-                              -{product.discount_percentage}%
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-2xl font-semibold text-slate-900">
-                            {price == null ? "—" : formatRON(price)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Preț final cu TVA
-                        {product.discount_active &&
-                          product.discount_price &&
-                          price && (
-                            <div className="text-green-600 font-medium mt-1">
-                              💚 Economisesti{" "}
-                              {formatRON(price - product.discount_price)}
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              {hasAnyDiscount ? (
+                                <>
+                                  <span className="text-sm font-medium text-slate-500 line-through">
+                                    {formatRON(price!)}
+                                  </span>
+                                  <span className="text-2xl font-semibold text-green-600">
+                                    {formatRON(finalPrice!)}
+                                  </span>
+                                  {product.discount_active && product.discount_price && (
+                                    <span className="text-sm font-bold text-white bg-red-600 px-2 py-1 rounded-lg">
+                                      -{product.discount_percentage}%
+                                    </span>
+                                  )}
+                                  {(product.class_discount_pct ?? 0) > 0 && (
+                                    <span className="text-sm font-bold text-white bg-indigo-600 px-2 py-1 rounded-lg">
+                                      Clasa -{product.class_discount_pct}%
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-2xl font-semibold text-slate-900">
+                                  {price == null ? "—" : formatRON(price)}
+                                </span>
+                              )}
                             </div>
-                          )}
-                      </div>
+                            <div className="text-[11px] text-slate-500">
+                              Preț final cu TVA
+                              {hasAnyDiscount && savings > 0 && (
+                                <div className="text-green-600 font-medium mt-1">
+                                  💚 Economisești {formatRON(savings)}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="text-xs text-right">
                       {(() => {
@@ -390,7 +386,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                             key={wh.id}
                             className="flex items-center justify-between"
                           >
-                            <div className="flex items-center gap-2 text-sm text-slate-700">
+                 1           <div className="flex items-center gap-2 text-sm text-slate-700">
                               <span className="rounded-md bg-slate-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-600">
                                 {wh.code}
                               </span>

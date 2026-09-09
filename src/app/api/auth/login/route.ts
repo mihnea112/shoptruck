@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { sql } from "@/lib/db";
 
 // ... keep your helpers (sameOriginCheck, normalize, etc.)
 
@@ -52,33 +53,34 @@ export async function POST(req: Request) {
     );
   }
 
-  // --- profile lookup (same as your code) ---
-  const { data: profile, error: profileErr } = await supabase
-    .from("profile")
-    .select("user_id, roles, is_active, default_route")
-    .eq("user_id", data.user.id)
-    .maybeSingle();
-
-  if (profileErr) {
-    return NextResponse.json(
-      { ok: false, error: "Eroare la citirea profilului." },
-      { status: 500, headers: { "cache-control": "no-store" } }
-    );
+  // --- account lookup (single source of truth) ---
+  let account: any = null;
+  try {
+    const accRows = await sql`
+      SELECT user_id, roles, is_active, default_route
+      FROM account
+      WHERE user_id = ${data.user.id}::uuid
+      LIMIT 1
+    ` as any[];
+    account = accRows[0] || null;
+  } catch {
+    account = null;
   }
 
-  const roles = Array.isArray((profile as any)?.roles)
-    ? (profile as any).roles.map((x: any) => String(x ?? "").trim().toLowerCase()).filter(Boolean)
+  const roles = Array.isArray(account?.roles)
+    ? account.roles.map((x: any) => String(x ?? "").trim().toLowerCase()).filter(Boolean)
     : [];
 
-  if ((profile as any)?.is_active === false) {
+  if (account?.is_active === false) {
     return NextResponse.json(
       { ok: false, error: "Email sau parolă incorecte." },
       { status: 401, headers: { "cache-control": "no-store" } }
     );
   }
 
-  const kind = roles.length > 0 ? "staff" : "customer";
-  const dbDefaultRoute = String((profile as any)?.default_route ?? "").trim();
+  const staffRoles = roles.filter((r: string) => r !== "user");
+  const kind = staffRoles.length > 0 ? "staff" : "customer";
+  const dbDefaultRoute = String(account?.default_route ?? "").trim();
 
   const ROLE_DEFAULT_ROUTE: Record<string, string> = {
     admin: "/admin",

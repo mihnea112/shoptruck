@@ -171,11 +171,11 @@ export function ReceptieMarfaClient() {
             productId: p.id,
             name: p.name,
             buyPrice: Number(p.buy_price_net),
-            marginPct: Number(p.profit_margin_pct ?? 30),
+            marginPct: Number(p.profit_margin_pct ?? 74),
             existingName: p.name,
             existingSku: p.sku,
             existingBuyPrice: Number(p.buy_price_net),
-            existingMarginPct: Number(p.profit_margin_pct ?? 30),
+            existingMarginPct: Number(p.profit_margin_pct ?? 74),
             existingStock: Number(p.stock_on_hand),
           };
           return copy;
@@ -188,8 +188,9 @@ export function ReceptieMarfaClient() {
   const handleUpload = useCallback(async (fileList: FileList | null) => {
     const file = fileList?.[0];
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      setError("Doar fișiere PDF sunt acceptate.");
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".pdf") && !name.endsWith(".csv")) {
+      setError("Doar fișiere PDF sau CSV sunt acceptate.");
       return;
     }
     setUploading(true);
@@ -203,9 +204,16 @@ export function ReceptieMarfaClient() {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        setError("Eroare la procesare — răspuns invalid de la server.");
+        return;
+      }
       if (!res.ok) {
-        setError(data.error || "Eroare la procesarea PDF-ului.");
+        setError(data.error || "Eroare la procesare.");
         setRawText(data.rawText || "");
         return;
       }
@@ -326,7 +334,7 @@ export function ReceptieMarfaClient() {
         name: "",
         quantity: 1,
         buyPrice: 0,
-        marginPct: 30,
+        marginPct: 74,
         matched: false,
         productId: null,
         existingName: null,
@@ -359,7 +367,7 @@ export function ReceptieMarfaClient() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Recepție marfă</h1>
         <p className="mt-1 text-sm text-slate-700">
-          Înregistrează marfa primită în depozit — din PDF sau manual.
+          Înregistrează marfa primită în depozit — din PDF, CSV sau manual.
         </p>
       </div>
 
@@ -409,9 +417,9 @@ export function ReceptieMarfaClient() {
               <path d="M12 18v-6" />
               <path d="M9 15l3-3 3 3" />
             </svg>
-            <div className="text-sm font-bold text-slate-900">Încarcă PDF</div>
+            <div className="text-sm font-bold text-slate-900">Încarcă PDF / CSV</div>
             <div className="mt-1 text-xs text-slate-700">
-              Încarcă documentul (factură, aviz) și produsele vor fi extrase automat.
+              Încarcă factura (PDF sau CSV) și produsele vor fi extrase automat.
             </div>
           </button>
 
@@ -501,10 +509,10 @@ export function ReceptieMarfaClient() {
               <path d="M9 15l3-3 3 3" />
             </svg>
             <p className="mt-4 text-sm font-medium text-slate-700">
-              Trage PDF-ul aici sau{" "}
+              Trage fișierul aici sau{" "}
               <label className="cursor-pointer text-[#b57712] underline underline-offset-2 hover:text-[#8a5a0e]">
                 alege de pe calculator
-                <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUpload(e.target.files)} disabled={uploading} />
+                <input type="file" accept="application/pdf,.csv,text/csv" className="hidden" onChange={(e) => handleUpload(e.target.files)} disabled={uploading} />
               </label>
             </p>
             <p className="mt-1 text-xs text-slate-600">Se caută codul, denumirea și prețul de achiziție</p>
@@ -516,14 +524,14 @@ export function ReceptieMarfaClient() {
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
                 <path d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
               </svg>
-              Se procesează PDF-ul…
+              Se procesează fișierul…
             </div>
           )}
 
           {rawText && !items.length && (
             <details className="rounded-lg border border-slate-200 bg-slate-50">
               <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
-                Text extras din PDF (pentru verificare)
+                Text extras din fișier (pentru verificare)
               </summary>
               <pre className="max-h-64 overflow-auto px-4 pb-4 text-xs text-slate-600 whitespace-pre-wrap">{rawText}</pre>
             </details>
@@ -743,7 +751,7 @@ export function ReceptieMarfaClient() {
           {rawText && (
             <details className="rounded-lg border border-slate-200 bg-slate-50">
               <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
-                Text extras din PDF
+                Text extras din fișier
               </summary>
               <pre className="max-h-64 overflow-auto px-4 pb-4 text-xs text-slate-600 whitespace-pre-wrap">{rawText}</pre>
             </details>

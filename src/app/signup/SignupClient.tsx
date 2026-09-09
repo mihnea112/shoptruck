@@ -128,7 +128,7 @@ export default function SignupClient({
                       : "border-slate-700 text-slate-200 hover:border-slate-500"
                   }`}
                 >
-                  Firmă
+                  Persoană juridică
                 </button>
               </div>
 

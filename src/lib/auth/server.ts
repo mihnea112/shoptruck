@@ -2,6 +2,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { sql } from "@/lib/db";
 
 export type SessionUser = {
   userId: string;
@@ -28,14 +29,17 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      getAll() {
+        return cookieStore.getAll();
       },
-      set(name: string, value: string, options: any) {
-        cookieStore.set({ name, value, ...options });
-      },
-      remove(name: string, options: any) {
-        cookieStore.set({ name, value: "", ...options, maxAge: 0 });
+      setAll(cookiesToSet) {
+        try {
+          for (const { name, value, options } of cookiesToSet) {
+            cookieStore.set({ name, value, ...options });
+          }
+        } catch {
+          // Called from a Server Component — ignore cookie writes
+        }
       },
     },
   });
@@ -46,40 +50,35 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   const u = userData.user;
 
-  // 2) load profile (Option A)
-  let profile: any = null;
+  // 2) load account data (single source of truth — no RLS, direct SQL)
+  let account: any = null;
   try {
-    const result = await supabase
-      .from("profile")
-      .select("user_id, roles, is_active, default_route")
-      .eq("user_id", u.id)
-      .maybeSingle();
-
-    if (result.error) {
-      // Profile table might not exist, that's ok for new users
-      profile = null;
-    } else {
-      profile = result.data;
-    }
+    const rows = await sql`
+      SELECT user_id, roles, is_active, default_route
+      FROM account
+      WHERE user_id = ${u.id}::uuid
+      LIMIT 1
+    ` as any[];
+    account = rows[0] || null;
   } catch {
-    // Profile table doesn't exist, use default
-    profile = null;
+    // account table might not have the new columns yet
+    account = null;
   }
 
-  // If profile missing => customer
-  const roles = normalizeRoles(profile?.roles ?? []);
-  const isActive = profile?.is_active;
+  const roles = normalizeRoles(account?.roles ?? []);
+  const isActive = account?.is_active;
 
   if (isActive === false) return null;
 
-  const kind: "staff" | "customer" = roles.length > 0 ? "staff" : "customer";
+  const staffRoles = roles.filter((r) => r !== "user");
+  const kind: "staff" | "customer" = staffRoles.length > 0 ? "staff" : "customer";
 
   return {
     userId: u.id,
     email: u.email ?? "",
     kind,
     roles,
-    defaultRoute: profile?.default_route ?? null,
+    defaultRoute: account?.default_route ?? null,
   };
 }
 

@@ -1,6 +1,8 @@
 // src/app/api/public/products/route.ts
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
+import { getSessionUser } from "@/lib/auth/server";
+import { getUserDiscountPct, applyClassDiscount } from "@/lib/discount";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -114,30 +116,61 @@ export async function GET(req: Request) {
   console.log("[API products] Final WHERE clause:", whereClause, "with values:", values);
 
   try {
+    // Get logged-in user's discount class (if any)
+    let classDiscountPct = 0;
+    try {
+      const user = await getSessionUser();
+      if (user?.userId) {
+        classDiscountPct = await getUserDiscountPct(user.userId);
+      }
+    } catch { /* not logged in — no class discount */ }
+
     console.log("[API products] Executing SQL with values:", { where: where.join(" AND "), values, sql });
     const { rows } = await pool.query(sql, values);
     const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
-    const items = rows.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      name: r.name,
-      sku: r.sku,
-      brand_name: r.brand_name || null,
-      brand_id: r.brand_id || null,
-      category_name: r.category_name || null,
-      category_id: r.category_id || null,
-      primary_code: r.primary_code || null,
-      price_gross: Number(r.sell_gross),
-      discount_active: r.discount_active || false,
-      discount_price: r.discount_active ? Number(r.discount_price) : null,
-      discount_percentage: Number(r.discount_percentage) || 0,
-      stock_available: Math.max(
-        0,
-        Number(r.stock_on_hand) - Number(r.stock_reserved),
-      ),
-      primary_image_url: toPublicUrl(r.primary_image_path),
-    }));
-    return NextResponse.json({ ok: true, items, total, limit, offset });
+    const items = rows.map((r) => {
+      const originalGross = Number(r.sell_gross);
+      const productDiscountPrice = r.discount_active ? Number(r.discount_price) : null;
+
+      // The effective base price (after product discount if active)
+      const basePrice = productDiscountPrice ?? originalGross;
+
+      // Apply class discount on top of the effective price
+      const classPrice = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : null;
+      const finalPrice = classPrice ?? basePrice;
+
+      // Calculate total discount percentage from original
+      const totalDiscountPct = originalGross > 0
+        ? Math.round((1 - finalPrice / originalGross) * 100)
+        : 0;
+
+      return {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        sku: r.sku,
+        brand_name: r.brand_name || null,
+        brand_id: r.brand_id || null,
+        category_name: r.category_name || null,
+        category_id: r.category_id || null,
+        primary_code: r.primary_code || null,
+        price_gross: originalGross,
+        discount_active: r.discount_active || false,
+        discount_price: productDiscountPrice,
+        discount_percentage: Number(r.discount_percentage) || 0,
+        // Class discount fields
+        class_discount_pct: classDiscountPct,
+        class_discount_price: classPrice,
+        final_price: finalPrice,
+        total_discount_pct: totalDiscountPct > 0 ? totalDiscountPct : 0,
+        stock_available: Math.max(
+          0,
+          Number(r.stock_on_hand) - Number(r.stock_reserved),
+        ),
+        primary_image_url: toPublicUrl(r.primary_image_path),
+      };
+    });
+    return NextResponse.json({ ok: true, items, total, limit, offset, class_discount_pct: classDiscountPct });
   } catch (e: any) {
     console.error("[API public products]", e);
     return NextResponse.json({ ok: false, error: e?.message }, { status: 500 });

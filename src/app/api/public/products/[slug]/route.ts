@@ -1,6 +1,8 @@
 // src/app/api/public/products/[slug]/route.ts
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
+import { getSessionUser } from "@/lib/auth/server";
+import { getUserDiscountPct, applyClassDiscount } from "@/lib/discount";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -291,6 +293,21 @@ export async function GET(
 
     const primaryCode = r.primary_code && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r.primary_code) ? (r.sku ?? null) : (r.primary_code ?? null);
 
+    // Get logged-in user's class discount
+    let classDiscountPct = 0;
+    try {
+      const user = await getSessionUser();
+      if (user?.userId) {
+        classDiscountPct = await getUserDiscountPct(user.userId);
+      }
+    } catch { /* not logged in */ }
+
+    const productDiscountPrice = r.discount_active ? (r.discount_price ?? null) : null;
+    const basePrice = productDiscountPrice ? Number(productDiscountPrice) : sellGross;
+    const classPrice = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : null;
+    const finalPrice = classPrice ?? basePrice;
+    const totalDiscountPct = sellGross > 0 ? Math.round((1 - finalPrice / sellGross) * 100) : 0;
+
     const item = {
       id: r.id,
       slug: r.slug,
@@ -310,6 +327,10 @@ export async function GET(
       discount_price: r.discount_price ?? null,
       discount_active: r.discount_active ?? false,
       discount_percentage: r.discount_percentage ?? 0,
+      class_discount_pct: classDiscountPct,
+      class_discount_price: classPrice,
+      final_price: finalPrice,
+      total_discount_pct: totalDiscountPct > 0 ? totalDiscountPct : 0,
 
       primary_image_url: toPublicUrl(r.primary_image_path ?? null),
       images,

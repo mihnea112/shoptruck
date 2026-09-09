@@ -15,8 +15,7 @@ const DELIVERY_OPTIONS = [
 ];
 
 const PAYMENT_OPTIONS = [
-  "SE ACHITA CU OP LA 15 ZILE",
-  "SE ACHITA CU OP LA 30 ZILE",
+  "OP",
   "NUMERAR",
   "CARD BANCAR",
   "PLATA LA LIVRARE",
@@ -25,12 +24,57 @@ const PAYMENT_OPTIONS = [
 export default function InvoiceGenerateButton({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingDefaults, setLoadingDefaults] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [invoiceType, setInvoiceType] = useState<"definitiva" | "proforma">("definitiva");
   const [deliveryMethod, setDeliveryMethod] = useState(DELIVERY_OPTIONS[0]);
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_OPTIONS[0]);
   const [dueDays, setDueDays] = useState(15);
+
+  // Fetch partner defaults when modal opens
+  async function fetchPartnerDefaults() {
+    setLoadingDefaults(true);
+    try {
+      const res = await fetch(`/api/admin/partners/defaults?orderId=${orderId}`);
+      const data = await res.json();
+      if (data.ok && data.defaults) {
+        const d = data.defaults;
+        if (d.delivery_method) {
+          // If it matches a known option use it, otherwise add it
+          if (DELIVERY_OPTIONS.includes(d.delivery_method)) {
+            setDeliveryMethod(d.delivery_method);
+          } else {
+            setDeliveryMethod(d.delivery_method);
+          }
+        }
+        if (d.payment_method) {
+          // Map partner payment_method to dropdown option
+          const upper = (d.payment_method as string).toUpperCase();
+          if (upper.includes("OP")) setPaymentMethod("OP");
+          else if (upper.includes("NUMERAR") || upper.includes("CASH")) setPaymentMethod("NUMERAR");
+          else if (upper.includes("CARD")) setPaymentMethod("CARD BANCAR");
+          else if (upper.includes("LIVRARE") || upper.includes("RAMBURS")) setPaymentMethod("PLATA LA LIVRARE");
+        }
+        if (d.credit_days && d.credit_days > 0) {
+          setDueDays(d.credit_days);
+        }
+      }
+    } catch {
+      // Non-critical — keep current defaults
+    } finally {
+      setLoadingDefaults(false);
+    }
+  }
+
+  function handleOpen() {
+    setOpen(true);
+    fetchPartnerDefaults();
+  }
+
+  // Build the actual payment string sent to the API
+  const resolvedPaymentMethod =
+    paymentMethod === "OP" ? `SE ACHITA CU OP LA ${dueDays} ZILE` : paymentMethod;
 
   async function handleGenerate() {
     setLoading(true);
@@ -45,7 +89,7 @@ export default function InvoiceGenerateButton({ orderId }: { orderId: string }) 
           orderId,
           invoiceType,
           deliveryMethod,
-          paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
           dueDays,
         }),
       });
@@ -81,7 +125,7 @@ export default function InvoiceGenerateButton({ orderId }: { orderId: string }) 
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={handleOpen}
         className="flex items-center gap-2 rounded-lg bg-[#feab1f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#e89a10]"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -163,6 +207,9 @@ export default function InvoiceGenerateButton({ orderId }: { orderId: string }) 
                   {DELIVERY_OPTIONS.map((o) => (
                     <option key={o} value={o}>{o}</option>
                   ))}
+                  {!DELIVERY_OPTIONS.includes(deliveryMethod) && deliveryMethod && (
+                    <option value={deliveryMethod}>{deliveryMethod} (partener)</option>
+                  )}
                 </select>
               </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/server";
+import { getUserDiscountPct, applyClassDiscount } from "@/lib/discount";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -17,6 +18,9 @@ export async function GET(req: Request) {
       return json({ ok: false, error: "Neautorizat." }, 401);
     }
 
+    // Get user's class discount
+    const classDiscountPct = await getUserDiscountPct(user.userId);
+
     const items = await sql`
       SELECT
         cc.id,
@@ -25,6 +29,8 @@ export async function GET(req: Request) {
         cc.added_at,
         p.name,
         p.slug,
+        p.discount_price,
+        p.discount_active,
         b.name as brand_name,
         pc.code_norm as primary_code,
         pi.primary_image_path,
@@ -50,18 +56,28 @@ export async function GET(req: Request) {
 
     return json({
       ok: true,
-      items: items.map((row: any) => ({
-        id: row.id,
-        product_id: row.product_id,
-        name: row.name,
-        slug: row.slug,
-        brand_name: row.brand_name || null,
-        primary_code: row.primary_code || null,
-        price_gross: Number(row.price_gross),
-        primary_image_path: row.primary_image_path || null,
-        quantity: Number(row.quantity),
-        added_at: row.added_at,
-      })),
+      class_discount_pct: classDiscountPct,
+      items: items.map((row: any) => {
+        const originalGross = Number(row.price_gross);
+        const productDiscountPrice = row.discount_active ? Number(row.discount_price) : null;
+        const basePrice = productDiscountPrice ?? originalGross;
+        const finalPrice = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : basePrice;
+
+        return {
+          id: row.id,
+          product_id: row.product_id,
+          name: row.name,
+          slug: row.slug,
+          brand_name: row.brand_name || null,
+          primary_code: row.primary_code || null,
+          price_gross: originalGross,
+          final_price: finalPrice,
+          class_discount_pct: classDiscountPct,
+          primary_image_path: row.primary_image_path || null,
+          quantity: Number(row.quantity),
+          added_at: row.added_at,
+        };
+      }),
       total: items.length,
     });
   } catch (e: any) {

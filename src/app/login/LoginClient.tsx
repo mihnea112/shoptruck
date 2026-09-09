@@ -128,9 +128,9 @@ export default function LoginClient({ initialNext }: { initialNext: string | nul
                   ← Înapoi la magazin
                 </Link>
 
-                <span className="text-xs text-slate-400">
-                  Ai nevoie de acces? Contactează administratorul.
-                </span>
+                <Link href="/signup" className="text-xs font-medium text-slate-200 hover:text-[#feab1f] transition">
+                  Nu ai cont? Creează unul →
+                </Link>
               </div>
             </form>
           </div>

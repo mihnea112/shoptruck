@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import InvoiceGenerateButton from "@/components/admin/InvoiceGenerateButton";
+import ChitantaGenerateButton from "@/components/admin/ChitantaGenerateButton";
 
 // ─── Types ───────────────────────────────────────────────────
 type OrderStatus =
@@ -397,6 +398,7 @@ export default function OrderDetailPage() {
           {actions.length > 0 && (
             <div className="flex flex-wrap gap-2">
               <InvoiceGenerateButton orderId={id} />
+              <ChitantaGenerateButton orderId={id} totalGross={order.totals.total_gross} />
               {actions.map((action) => (
                 <button
                   key={action.endpoint}

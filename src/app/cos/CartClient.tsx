@@ -148,8 +148,20 @@ export default function CartClient() {
                       {item.primary_code}
                     </p>
                   )}
-                  <div className="mt-2 font-semibold text-slate-900">
-                    {formatRON(item.price_gross)}
+                  <div className="mt-2">
+                    {item.final_price && item.final_price < item.price_gross ? (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm text-slate-500 line-through">{formatRON(item.price_gross)}</span>
+                        <span className="font-semibold text-green-600">{formatRON(item.final_price)}</span>
+                        {(item.class_discount_pct ?? 0) > 0 && (
+                          <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                            -{item.class_discount_pct}%
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="font-semibold text-slate-900">{formatRON(item.price_gross)}</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -175,7 +187,7 @@ export default function CartClient() {
                 </div>
                 <div className="text-right">
                   <div className="font-semibold text-slate-900">
-                    {formatRON(item.price_gross * item.quantity)}
+                    {formatRON((item.final_price ?? item.price_gross) * item.quantity)}
                   </div>
                   <button
                     onClick={() => removeItem(item.product_id)}
