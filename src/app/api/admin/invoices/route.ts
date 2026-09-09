@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/api";
 import { sql } from "@/lib/db";
+import { decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -52,7 +53,11 @@ export async function GET(req: Request) {
         LIMIT ${limit} OFFSET ${offset}
       `) as any[]);
 
-  return json({ ok: true, items: rows });
+  const items = rows.map((r: any) => ({
+    ...r,
+    customer_vat: decryptPII(r.customer_vat) || r.customer_vat,
+  }));
+  return json({ ok: true, items });
 }
 
 /* ── DELETE: delete invoice ── */

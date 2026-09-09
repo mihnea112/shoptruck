@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sql } from "@/lib/db";
+import { encryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -212,7 +213,7 @@ export async function POST(req: Request) {
           WHERE id = ${existingAccount[0].id}::uuid
         `;
         linkedExisting = true;
-        console.log("Linked existing account", existingAccount[0].id, "to user", supabaseUserId);
+        console.log("[REGISTER] Linked existing account to user");
 
         // Also link partner if it exists for that account
         await sql`
@@ -236,7 +237,7 @@ export async function POST(req: Request) {
           ) VALUES (
             ${supabaseUserId}::uuid, ${accountKind}, ${displayName}, ${legalName || displayName},
             ${kind === "individual" ? displayName : null},
-            ${email}, ${phone}, ${taxId}, ${regNo}, ${notes},
+            ${email}, ${encryptPII(phone)}, ${encryptPII(taxId)}, ${encryptPII(regNo)}, ${notes},
             ARRAY[]::TEXT[], true
           )
         `;
@@ -266,7 +267,7 @@ export async function POST(req: Request) {
             account_id, credit_days, credit_limit
           ) VALUES (
             'CLIENT', ${partnerKind}, ${displayName}, ${legalName || displayName},
-            ${email}, ${phone}, ${taxId}, ${regNo},
+            ${email}, ${encryptPII(phone)}, ${encryptPII(taxId)}, ${encryptPII(regNo)},
             ${supabaseUserId}::uuid, 0, 0
           )
         `;

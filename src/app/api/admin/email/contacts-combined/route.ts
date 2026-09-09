@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireStaff } from "@/lib/auth/api";
+import { decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -108,7 +109,7 @@ export async function GET(req: Request) {
       created_at: row.created_at,
       source: row.source,
       ...(row.account_id && { account_id: row.account_id }),
-      ...(row.phone && { phone: row.phone }),
+      ...(row.phone && { phone: decryptPII(row.phone) || row.phone }),
       ...(row.kind && { kind: row.kind }),
     }));
 

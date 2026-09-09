@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/api";
 import { sql } from "@/lib/db";
+import { decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -145,9 +146,9 @@ export async function POST(req: Request) {
       representing,
       customer: {
         display_name: order.display_name,
-        reg_no: order.reg_no,
-        vat_id: order.tax_id,
-        address: order.billing_line1,
+        reg_no: decryptPII(order.reg_no),
+        vat_id: decryptPII(order.tax_id),
+        address: decryptPII(order.billing_line1),
         city: order.billing_city,
         county: order.billing_country,
       },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { ApiError, requireStaff } from "@/lib/auth/api";
+import { decryptPII, encryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -75,7 +76,13 @@ export async function GET(req: Request) {
       LIMIT ${limit}
     `;
 
-    return json({ ok: true, items: rows, limit });
+    const items = rows.map((r: any) => ({
+      ...r,
+      phone: decryptPII(r.phone) || r.phone,
+      tax_id: decryptPII(r.tax_id) || r.tax_id,
+      reg_no: decryptPII(r.reg_no) || r.reg_no,
+    }));
+    return json({ ok: true, items, limit });
   } catch (e: any) {
     const status = e instanceof ApiError ? e.status : 500;
     return json({ ok: false, error: e?.message || "Eroare internă." }, status);
@@ -162,11 +169,11 @@ export async function POST(req: Request) {
           ${displayName},
           ${finalLegalName},
           ${email},
-          ${phone},
-          ${taxId},
-          ${regNo},
+          ${encryptPII(phone)},
+          ${encryptPII(taxId)},
+          ${encryptPII(regNo)},
           ${isVatPayer},
-          ${billingLine1},
+          ${encryptPII(billingLine1)},
           ${billingCity},
           ${billingZip},
           ${billingCountry},

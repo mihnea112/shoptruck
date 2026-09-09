@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   const password = String(body?.password ?? "");
   const mode = String(body?.mode ?? "cookie").toLowerCase();
 
-  console.log("[LOGIN] Email:", email, "Mode:", mode);
+  // Never log PII — mask email for GDPR compliance
+  console.log("[LOGIN] Mode:", mode);
 
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

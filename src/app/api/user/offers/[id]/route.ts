@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireCustomer } from "@/lib/auth/api";
+import { decryptPII } from "@/lib/crypto/pii";
 
 type Ctx = { params: { id: string } | Promise<{ id: string }> };
 
@@ -104,10 +105,10 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         id: offer.account_id,
         kind: String(offer.account_kind || "").toLowerCase(),
         display_name: offer.account_display_name,
-        vat_id: offer.account_tax_id ?? null,
-        phone: offer.account_phone ?? "",
+        vat_id: decryptPII(offer.account_tax_id) ?? null,
+        phone: decryptPII(offer.account_phone) ?? "",
         email: offer.account_email ?? "",
-        reg_no: offer.account_reg_no ?? null,
+        reg_no: decryptPII(offer.account_reg_no) ?? null,
       },
 
       accountId: offer.account_id,

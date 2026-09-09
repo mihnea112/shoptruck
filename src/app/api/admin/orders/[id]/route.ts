@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
 import { requireStaff } from "@/lib/auth/api";
+import { decryptPII } from "@/lib/crypto/pii";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -131,10 +132,10 @@ export async function GET(
             id: order.account_id,
             kind: String(order.account_kind || "").toLowerCase(),
             display_name: order.account_display_name ?? "",
-            vat_id: order.account_tax_id ?? null,
-            phone: order.account_phone ?? "",
+            vat_id: decryptPII(order.account_tax_id) ?? null,
+            phone: decryptPII(order.account_phone) ?? "",
             email: order.account_email ?? "",
-            reg_no: order.account_reg_no ?? null,
+            reg_no: decryptPII(order.account_reg_no) ?? null,
           }
         : null,
 

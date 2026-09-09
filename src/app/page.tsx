@@ -130,9 +130,6 @@ export default async function HomePage() {
         <section className="border-b border-slate-900 bg-linear-to-br from-black via-neutral-900 to-neutral-800 text-white">
           <div className="flex w-full flex-col gap-12 px-4 sm:px-6 lg:px-8 py-16 lg:flex-row lg:items-center">
             <div className="flex-1 space-y-6">
-              <span className="inline-flex items-center rounded-full bg-[#feab1f]/15 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.3em] text-[#feab1f]">
-                AutoTruck · Webshop nou
-              </span>
               <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
                 Webshop de{" "}
                 <span className="text-[#feab1f]">produse pentru camioane.</span>

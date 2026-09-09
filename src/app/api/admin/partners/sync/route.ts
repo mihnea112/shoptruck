@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { ApiError, requireStaff } from "@/lib/auth/api";
+import { encryptPII, decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
           account_id, credit_days, credit_limit
         ) VALUES (
           'CLIENT', 'COMPANY', ${displayName}, ${prof.legal_name || displayName},
-          ${prof.email}, ${prof.phone}, ${prof.tax_id}, ${prof.reg_no},
+          ${prof.email}, ${encryptPII(prof.phone)}, ${encryptPII(prof.tax_id)}, ${encryptPII(prof.reg_no)},
           ${prof.user_id}::uuid, 0, 0
         )
       `;
@@ -98,7 +99,7 @@ export async function POST(req: Request) {
           email, phone, account_id, credit_days, credit_limit
         ) VALUES (
           'CLIENT', 'INDIVIDUAL', ${displayName},
-          ${prof.email}, ${prof.phone}, ${prof.user_id}::uuid, 0, 0
+          ${prof.email}, ${encryptPII(prof.phone)}, ${prof.user_id}::uuid, 0, 0
         )
       `;
       clientsAdded++;

@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
 import { requireStaff } from "@/lib/auth/api";
+import { decryptPII } from "@/lib/crypto/pii";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -121,9 +122,15 @@ export async function GET(req: Request) {
 
     const { rows } = await pool.query(sql, values);
 
+    // Decrypt PII fields before sending to admin UI
+    const items = rows.map((row: any) => ({
+      ...row,
+      account_phone: decryptPII(row.account_phone) || row.account_phone,
+    }));
+
     return json({
       ok: true,
-      items: rows,
+      items,
       limit,
       offset,
     });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/api";
 import { sql } from "@/lib/db";
+import { decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -59,11 +60,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       plateNo: inv.plate_no || inv.v_plate || "",
       customer: {
         display_name: inv.display_name,
-        vat_id: inv.tax_id,
-        reg_no: inv.reg_no,
-        phone: inv.phone,
+        vat_id: decryptPII(inv.tax_id),
+        reg_no: decryptPII(inv.reg_no),
+        phone: decryptPII(inv.phone),
         email: inv.email,
-        address: inv.billing_line1,
+        address: decryptPII(inv.billing_line1),
         city: inv.billing_city,
         county: inv.billing_country,
       },

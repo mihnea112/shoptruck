@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { requireCustomer } from "@/lib/auth/api";
+import { encryptPII, decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -21,6 +22,12 @@ export async function PUT(req: Request) {
     const fullName = `${lastName || ""} ${firstName || ""}`.trim() || null;
     const displayName = companyName || fullName || null;
 
+    // Encrypt sensitive PII before storing
+    const encPhone = encryptPII(phone || null);
+    const encTaxId = encryptPII(taxId || null);
+    const encRegNo = encryptPII(regNo || null);
+    const encAddress = encryptPII(address || null);
+
     // Update the account table (single source of truth)
     const updated = await sql`
       UPDATE account SET
@@ -28,10 +35,10 @@ export async function PUT(req: Request) {
         legal_name = ${legalName || displayName},
         full_name = ${fullName},
         email = ${email || null},
-        phone = ${phone || null},
-        tax_id = ${taxId || null},
-        reg_no = ${regNo || null},
-        billing_line1 = ${address || null},
+        phone = ${encPhone},
+        tax_id = ${encTaxId},
+        reg_no = ${encRegNo},
+        billing_line1 = ${encAddress},
         billing_city = ${city || null},
         billing_zip = ${postalCode || null},
         billing_country = ${country || null},
@@ -51,10 +58,10 @@ export async function PUT(req: Request) {
           ${legalName || displayName},
           ${fullName},
           ${email || null},
-          ${phone || null},
-          ${taxId || null},
-          ${regNo || null},
-          ${address || null},
+          ${encPhone},
+          ${encTaxId},
+          ${encRegNo},
+          ${encAddress},
           ${city || null},
           ${postalCode || null},
           ${country || null},
@@ -112,16 +119,16 @@ export async function GET(req: Request) {
       firstName,
       lastName,
       email: acc.email || user.email,
-      phone: acc.phone || "",
-      address: acc.billing_line1 || "",
+      phone: decryptPII(acc.phone) || "",
+      address: decryptPII(acc.billing_line1) || "",
       city: acc.billing_city || "",
       postalCode: acc.billing_zip || "",
       country: acc.billing_country || "România",
       kind: kindLower || null,
       companyName: kindLower === "company" ? acc.display_name : "",
       legalName: acc.legal_name || "",
-      taxId: acc.tax_id || "",
-      regNo: acc.reg_no || "",
+      taxId: decryptPII(acc.tax_id) || "",
+      regNo: decryptPII(acc.reg_no) || "",
     });
   } catch (e: any) {
     console.error("[API user profile GET]", e);
