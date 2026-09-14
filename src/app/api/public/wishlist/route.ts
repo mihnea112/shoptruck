@@ -29,7 +29,12 @@ export async function GET(req: Request) {
         p.slug,
         p.discount_price,
         p.discount_active,
-        p.discount_percentage,
+        CASE
+          WHEN p.discount_active AND p.discount_price > 0
+          THEN ROUND((1 - p.discount_price::NUMERIC / (CEIL(p.buy_price_net * (1 + p.profit_margin_pct/100.0) *
+            (1 + CASE WHEN tr.rate <= 1 THEN tr.rate ELSE tr.rate/100 END)))::NUMERIC) * 100)
+          ELSE 0
+        END AS discount_percentage,
         b.name as brand_name,
         pc.code_norm as primary_code,
         pi.primary_image_path,
