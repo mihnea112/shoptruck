@@ -14,7 +14,7 @@ function formatRON(n: number) {
 }
 
 export default function WishlistClient() {
-  const { items, isLoading, error, reload } = useWishlist();
+  const { items, classDiscountPct, isLoading, error, reload } = useWishlist();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -112,8 +112,35 @@ export default function WishlistClient() {
                 <td className="px-6 py-4 text-xs font-mono text-slate-600">
                   {item.primary_code || "—"}
                 </td>
-                <td className="px-6 py-4 text-right font-semibold text-slate-900">
-                  {formatRON(item.price_gross)}
+                <td className="px-6 py-4 text-right">
+                  {item.final_price < item.price_gross ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-sm text-slate-500 line-through">
+                          {formatRON(item.price_gross)}
+                        </span>
+                        <span className="font-semibold text-green-600">
+                          {formatRON(item.final_price)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-end gap-1">
+                        {item.discount_price != null && (
+                          <span className="text-[10px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded">
+                            -{item.discount_percentage}%
+                          </span>
+                        )}
+                        {classDiscountPct > 0 && (
+                          <span className="text-[10px] font-bold text-white bg-indigo-600 px-1.5 py-0.5 rounded">
+                            Clasa -{classDiscountPct}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="font-semibold text-slate-900">
+                      {formatRON(item.price_gross)}
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-center">
                   <FavoriteButton productId={item.product_id} />
@@ -158,8 +185,31 @@ export default function WishlistClient() {
                     {item.primary_code}
                   </p>
                 )}
-                <div className="mt-2 font-semibold text-slate-900">
-                  {formatRON(item.price_gross)}
+                <div className="mt-2">
+                  {item.final_price < item.price_gross ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-slate-500 line-through">
+                        {formatRON(item.price_gross)}
+                      </span>
+                      <span className="font-semibold text-green-600">
+                        {formatRON(item.final_price)}
+                      </span>
+                      {item.discount_price != null && (
+                        <span className="text-[10px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded">
+                          -{item.discount_percentage}%
+                        </span>
+                      )}
+                      {classDiscountPct > 0 && (
+                        <span className="text-[10px] font-bold text-white bg-indigo-600 px-1.5 py-0.5 rounded">
+                          Clasa -{classDiscountPct}%
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="font-semibold text-slate-900">
+                      {formatRON(item.price_gross)}
+                    </span>
+                  )}
                 </div>
               </div>
 

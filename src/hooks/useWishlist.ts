@@ -10,12 +10,16 @@ export interface WishlistItem {
   brand_name: string | null;
   primary_code: string | null;
   price_gross: number;
+  discount_price: number | null;
+  discount_percentage: number;
+  final_price: number;
   primary_image_path: string | null;
   added_at: string;
 }
 
 export function useWishlist() {
   const [items, setItems] = useState<WishlistItem[]>([]);
+  const [classDiscountPct, setClassDiscountPct] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -36,6 +40,7 @@ export function useWishlist() {
 
       if (data.ok) {
         setItems(data.items || []);
+        setClassDiscountPct(data.class_discount_pct || 0);
       } else if (res.status === 401) {
         // Not authenticated, wishlist will be empty
         setItems([]);
@@ -114,6 +119,7 @@ export function useWishlist() {
 
   return {
     items,
+    classDiscountPct,
     addFavorite,
     removeFavorite,
     isFavorited,
