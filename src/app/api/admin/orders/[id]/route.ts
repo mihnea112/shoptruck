@@ -120,7 +120,7 @@ export async function GET(
       status: order.status,
       created_at: order.created_at,
       updated_at: order.updated_at,
-      notes: order.notes ?? "",
+      notes: decryptPII(order.notes) || order.notes || "",
 
       offerId: order.offer_id ?? null,
       accountId: order.account_id ?? null,

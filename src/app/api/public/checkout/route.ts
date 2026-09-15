@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/server";
 import { getUserDiscountPct, applyClassDiscount } from "@/lib/discount";
 import { decryptPII, encryptPII } from "@/lib/crypto/pii";
+import { getEpClient, getAppUrl } from "@/lib/euplatesc";
 
 function toPublicUrl(path: string | null): string | null {
   if (!path) return null;
@@ -126,6 +127,10 @@ export async function GET() {
     const totalNet = items.reduce((s: number, i: any) => s + i.unit_net * i.quantity, 0);
     const totalTax = totalGross - totalNet;
 
+    const warehouses = await sql`
+      SELECT id, name, address FROM warehouse WHERE is_active = true ORDER BY name ASC
+    `;
+
     return json({
       ok: true,
       profile,
@@ -136,6 +141,7 @@ export async function GET() {
         gross: Math.round(totalGross * 100) / 100,
       },
       class_discount_pct: classDiscountPct,
+      warehouses,
     });
   } catch (e: any) {
     console.error("[API checkout GET]", e);
@@ -150,6 +156,7 @@ export async function POST(req: Request) {
     if (!user) return json({ ok: false, error: "Neautorizat." }, 401);
 
     const body = await req.json().catch(() => null);
+    console.log("[checkout POST body]", JSON.stringify(body));
     const shippingAddress = body?.shipping_address?.trim() || "";
     const shippingCity = body?.shipping_city?.trim() || "";
     const shippingPostalCode = body?.shipping_postal_code?.trim() || "";
@@ -159,9 +166,17 @@ export async function POST(req: Request) {
     const billingRegNo = body?.billing_reg_no?.trim() || "";
     const phone = body?.phone?.trim() || "";
     const notes = body?.notes?.trim() || "";
+    const deliveryMethod = body?.delivery_method === "pickup" ? "pickup" : "courier";
+    const pickupWarehouseId = body?.pickup_warehouse_id?.trim() || null;
+    const paymentMethod = body?.payment_method === "transfer" ? "transfer" : "card";
 
-    if (!shippingAddress || !shippingCity) {
-      return json({ ok: false, error: "Adresa și orașul sunt obligatorii." }, 400);
+    if (deliveryMethod === "courier") {
+      if (!shippingAddress || !shippingCity) {
+        return json({ ok: false, error: "Adresa și orașul sunt obligatorii pentru livrare prin curier." }, 400);
+      }
+    }
+    if (deliveryMethod === "pickup" && !pickupWarehouseId) {
+      return json({ ok: false, error: "Selectează un depozit pentru ridicare." }, 400);
     }
     if (!phone) {
       return json({ ok: false, error: "Telefonul este obligatoriu." }, 400);
@@ -233,18 +248,25 @@ export async function POST(req: Request) {
     const structuredNotes = encryptPII(plainNotes) || plainNotes;
 
     // Create order + items + clear cart
-    // Insert order
     const [order] = await sql`
       INSERT INTO public."order" (
         account_id,
         status,
         notes,
+        delivery_method,
+        pickup_warehouse_id,
+        payment_method,
+        payment_status,
         created_by_user_id
       )
       VALUES (
         ${accountId}::uuid,
         'PLACED',
         ${structuredNotes},
+        ${deliveryMethod},
+        ${pickupWarehouseId ? pickupWarehouseId : null}::uuid,
+        ${paymentMethod},
+        ${paymentMethod === "card" ? "pending" : "not_required"},
         ${user.userId}::uuid
       )
       RETURNING id
@@ -284,6 +306,40 @@ export async function POST(req: Request) {
     await sql`
       DELETE FROM customer_cart WHERE customer_id = ${user.userId}::uuid
     `;
+
+    // Generate EuPlatesc payment URL for card payments
+    if (paymentMethod === "card") {
+      const totalGross = orderItems.reduce((s, i) => s + i.line_gross, 0);
+      const appUrl = getAppUrl();
+
+      // Fetch user email for EuPlatesc
+      const [acct] = await sql`
+        SELECT email, display_name FROM account WHERE id = ${accountId}::uuid LIMIT 1
+      `;
+
+      const paymentResult = getEpClient().paymentUrl({
+        amount: Math.round(totalGross * 100) / 100,
+        currency: "RON",
+        invoiceId: resultOrderId,
+        orderDescription: `Comanda ShopTruck #${resultOrderId.slice(0, 8)}`,
+        billingFirstName: billingName.split(" ")[0] || undefined,
+        billingLastName: billingName.split(" ").slice(1).join(" ") || undefined,
+        billingPhone: phone || undefined,
+        billingEmail: acct?.email || undefined,
+        billingCity: shippingCity || undefined,
+        billingCountry: shippingCountry || undefined,
+        silentUrl: `${appUrl}/api/public/euplatesc/callback`,
+        successUrl: `${appUrl}/checkout/success`,
+        failedUrl: `${appUrl}/checkout/failed`,
+        backToSite: `${appUrl}/checkout`,
+      } as any);
+
+      return json({
+        ok: true,
+        order_id: resultOrderId,
+        payment_url: paymentResult.paymentUrl,
+      });
+    }
 
     return json({ ok: true, order_id: resultOrderId });
   } catch (e: any) {

@@ -17,6 +17,7 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.90.1",
     "argon2": "^0.44.0",
+    "euplatesc": "^1.1.0",
     "fast-xml-parser": "^5.8.0",
     "file-saver": "^2.0.5",
     "next": "16.0.8",

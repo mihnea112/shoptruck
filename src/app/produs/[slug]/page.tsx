@@ -84,13 +84,14 @@ async function getBaseUrl() {
 
 async function getProductBySlug(slug: string): Promise<DbProduct | null> {
   const base = await getBaseUrl();
+  const h = await headers();
+  const cookie = h.get("cookie") || "";
 
   const res = await fetch(
     `${base}/api/public/products/${encodeURIComponent(slug)}`,
     {
-      // product page can be cached a bit; change to no-store if you want
-      next: { revalidate: 60 },
-      headers: { accept: "application/json" },
+      cache: "no-store",
+      headers: { accept: "application/json", cookie },
     },
   );
 

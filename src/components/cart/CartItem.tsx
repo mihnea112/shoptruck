@@ -22,7 +22,9 @@ export function CartItem({
   onUpdateQuantity,
   onRemove,
 }: CartItemProps) {
-  const subtotal = item.price_gross * item.quantity;
+  const effectivePrice = item.final_price ?? item.price_gross;
+  const hasDiscount = effectivePrice < item.price_gross;
+  const subtotal = effectivePrice * item.quantity;
 
   return (
     <tr className="border-b border-slate-200 hover:bg-slate-50 transition">
@@ -40,8 +42,20 @@ export function CartItem({
       <td className="px-6 py-4 text-xs font-mono text-slate-600">
         {item.primary_code || "—"}
       </td>
-      <td className="px-6 py-4 text-right font-semibold text-slate-900">
-        {formatRON(item.price_gross)}
+      <td className="px-6 py-4 text-right">
+        {hasDiscount ? (
+          <div className="space-y-0.5">
+            <div className="text-xs text-slate-500 line-through">{formatRON(item.price_gross)}</div>
+            <div className="font-semibold text-green-600">{formatRON(effectivePrice)}</div>
+            {(item.class_discount_pct ?? 0) > 0 && (
+              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                -{item.class_discount_pct}%
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="font-semibold text-slate-900">{formatRON(item.price_gross)}</span>
+        )}
       </td>
       <td className="px-6 py-4 text-center">
         <div className="flex items-center justify-center gap-2">

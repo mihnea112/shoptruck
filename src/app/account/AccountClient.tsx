@@ -39,21 +39,7 @@ export default function AccountClient() {
       ) : activeTab === "offers" ? (
         <OffersSection />
       ) : activeTab === "orders" ? (
-        <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6 md:p-8 text-center">
-          <div className="mb-3 sm:mb-4 text-3xl sm:text-4xl">📦</div>
-          <h3 className="mb-1 sm:mb-2 text-base sm:text-lg font-semibold text-slate-900">
-            Nu ai nici o comandă
-          </h3>
-          <p className="mb-4 sm:mb-6 text-xs sm:text-sm text-slate-600">
-            Explorează catalogul și plasează prima comandă
-          </p>
-          <Link
-            href="/catalog"
-            className="inline-block rounded-full bg-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition"
-          >
-            Mergi la catalog
-          </Link>
-        </div>
+        <OrdersSection />
       ) : (
         <WishlistClient />
       )}
@@ -576,6 +562,246 @@ function OffersSection() {
 
       <div className="mt-4 border-t border-slate-200 pt-3 text-sm text-slate-600">
         {offers.length} ofert{offers.length !== 1 ? "e" : "ă"}
+      </div>
+    </div>
+  );
+}
+
+/* ── Orders Section ───────────────────────────────────── */
+
+type Order = {
+  id: string;
+  status: string;
+  deliveryMethod: string;
+  paymentMethod: string;
+  paymentStatus: string | null;
+  createdAt: string;
+  totalNet: number;
+  totalTax: number;
+  totalGross: number;
+  itemsCount: number;
+};
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  PLACED: "Plasată",
+  RESERVED: "Rezervată",
+  SHIPPED: "Expediată",
+  DELIVERED: "Livrată",
+  CANCELLED: "Anulată",
+};
+
+const ORDER_STATUS_COLORS: Record<string, string> = {
+  PLACED: "bg-blue-50 text-blue-700",
+  RESERVED: "bg-amber-50 text-amber-700",
+  SHIPPED: "bg-indigo-50 text-indigo-700",
+  DELIVERED: "bg-emerald-50 text-emerald-700",
+  CANCELLED: "bg-red-50 text-red-700",
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  paid: "Plătită",
+  pending: "În așteptare",
+  failed: "Eșuată",
+  not_required: "—",
+};
+
+function OrderInvoiceBtn({ orderId }: { orderId: string }) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    try {
+      setDownloading(true);
+      const res = await fetch(`/api/user/orders/${orderId}`);
+      if (!res.ok) throw new Error("Eroare la descărcare");
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Date invalide");
+
+      const { pdf } = await import("@react-pdf/renderer");
+      const { saveAs } = await import("file-saver");
+      const { default: InvoicePDF } = await import("@/components/admin/InvoicePdfDocument");
+
+      const blob = await pdf(<InvoicePDF data={json.data} />).toBlob();
+      saveAs(blob, `Comanda-${orderId.slice(0, 6).toUpperCase()}.pdf`);
+    } catch (err) {
+      console.error("PDF error:", err);
+      alert("Nu s-a putut genera PDF-ul.");
+    } finally {
+      setDownloading(false);
+    }
+  }, [orderId]);
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={downloading}
+      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+    >
+      {downloading ? (
+        <span>Se generează...</span>
+      ) : (
+        <>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          PDF
+        </>
+      )}
+    </button>
+  );
+}
+
+function OrdersSection() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/user/orders");
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Eroare");
+        setOrders(data.items || []);
+      } catch (e: any) {
+        setError(e?.message || "Eroare la încărcare");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-slate-300 p-8 text-center">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+        <p className="mt-4 text-sm text-slate-600">Se încarcă comenzile...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+        <div className="text-sm text-red-700">{error}</div>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="rounded-xl sm:rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6 md:p-8 text-center">
+        <div className="mb-3 sm:mb-4 text-3xl sm:text-4xl">📦</div>
+        <h3 className="mb-1 sm:mb-2 text-base sm:text-lg font-semibold text-slate-900">
+          Nu ai nici o comandă
+        </h3>
+        <p className="mb-4 sm:mb-6 text-xs sm:text-sm text-slate-600">
+          Explorează catalogul și plasează prima comandă
+        </p>
+        <Link
+          href="/catalog"
+          className="inline-block rounded-full bg-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition"
+        >
+          Mergi la catalog
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Desktop Table */}
+      <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold text-slate-900">Data</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-900">Status</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-900">Livrare</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-900">Plată</th>
+              <th className="px-4 py-3 text-right font-semibold text-slate-900">Produse</th>
+              <th className="px-4 py-3 text-right font-semibold text-slate-900">Total</th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-900">Factură</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o, idx) => (
+              <tr
+                key={o.id}
+                className={`border-b border-slate-200 transition hover:bg-slate-50 ${
+                  idx === orders.length - 1 ? "border-b-0" : ""
+                }`}
+              >
+                <td className="px-4 py-3 text-slate-900">{formatDate(o.createdAt)}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${ORDER_STATUS_COLORS[o.status] || "bg-slate-100 text-slate-700"}`}>
+                    {ORDER_STATUS_LABELS[o.status] || o.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-slate-700 text-xs">
+                  {o.deliveryMethod === "pickup" ? "Ridicare" : "Curier"}
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  <span className="text-slate-700">
+                    {o.paymentMethod === "card" ? "Card" : "Transfer"}
+                  </span>
+                  {o.paymentStatus && o.paymentStatus !== "not_required" && (
+                    <span className={`ml-1 text-[10px] font-medium ${
+                      o.paymentStatus === "paid" ? "text-emerald-600" :
+                      o.paymentStatus === "pending" ? "text-amber-600" : "text-red-600"
+                    }`}>
+                      ({PAYMENT_STATUS_LABELS[o.paymentStatus] || o.paymentStatus})
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right text-slate-700">{o.itemsCount}</td>
+                <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatRON(o.totalGross)}</td>
+                <td className="px-4 py-3 text-center">
+                  <OrderInvoiceBtn orderId={o.id} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="md:hidden space-y-3">
+        {orders.map((o) => (
+          <div
+            key={o.id}
+            className="rounded-2xl border border-slate-200 bg-white p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-900">{formatDate(o.createdAt)}</span>
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${ORDER_STATUS_COLORS[o.status] || "bg-slate-100 text-slate-700"}`}>
+                {ORDER_STATUS_LABELS[o.status] || o.status}
+              </span>
+            </div>
+            <div className="text-xs text-slate-600 mb-1">
+              {o.deliveryMethod === "pickup" ? "Ridicare din depozit" : "Curier"} ·{" "}
+              {o.paymentMethod === "card" ? "Card online" : "Transfer bancar"}
+              {o.paymentStatus && o.paymentStatus !== "not_required" && (
+                <span className={`ml-1 font-medium ${
+                  o.paymentStatus === "paid" ? "text-emerald-600" :
+                  o.paymentStatus === "pending" ? "text-amber-600" : "text-red-600"
+                }`}>
+                  ({PAYMENT_STATUS_LABELS[o.paymentStatus] || o.paymentStatus})
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-slate-500 mb-2">{o.itemsCount} produs{o.itemsCount !== 1 ? "e" : ""}</div>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+              <span className="text-sm font-semibold text-slate-900">{formatRON(o.totalGross)}</span>
+              <OrderInvoiceBtn orderId={o.id} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 border-t border-slate-200 pt-3 text-sm text-slate-600">
+        {orders.length} comand{orders.length !== 1 ? "e" : "ă"}
       </div>
     </div>
   );

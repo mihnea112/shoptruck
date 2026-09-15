@@ -113,7 +113,7 @@ export async function GET(req: Request) {
       LEFT JOIN public.order_item oi ON oi.order_id = o.id
       ${whereSql}
       GROUP BY
-        o.id, a.id, v.id, p.user_id
+        o.id, a.id, v.id, p.user_id, p.email, p.full_name
       ORDER BY o.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
     `;

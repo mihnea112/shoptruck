@@ -40,6 +40,12 @@ interface CheckoutProfile {
   country: string | null;
 }
 
+interface Warehouse {
+  id: string;
+  name: string;
+  address: string | null;
+}
+
 interface Totals {
   net: number;
   tax: number;
@@ -57,9 +63,13 @@ export default function CheckoutClient() {
   const [items, setItems] = useState<CheckoutItem[]>([]);
   const [totals, setTotals] = useState<Totals>({ net: 0, tax: 0, gross: 0 });
   const [classDiscountPct, setClassDiscountPct] = useState(0);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [accountKind, setAccountKind] = useState<string | null>(null);
 
-  // Form fields
   const [form, setForm] = useState({
+    delivery_method: "courier" as "courier" | "pickup",
+    pickup_warehouse_id: "",
+    payment_method: "card" as "card" | "transfer",
     shipping_address: "",
     shipping_city: "",
     shipping_postal_code: "",
@@ -91,10 +101,11 @@ export default function CheckoutClient() {
         setItems(data.items || []);
         setTotals(data.totals || { net: 0, tax: 0, gross: 0 });
         setClassDiscountPct(data.class_discount_pct || 0);
+        setWarehouses(data.warehouses || []);
 
-        // Prefill form from profile
         const p: CheckoutProfile | null = data.profile;
         if (p) {
+          setAccountKind(p.kind);
           setForm((prev) => ({
             ...prev,
             shipping_address: p.address || "",
@@ -120,7 +131,7 @@ export default function CheckoutClient() {
   }, [router]);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -145,6 +156,11 @@ export default function CheckoutClient() {
       if (!res.ok || !data.ok) {
         setError(data.error || "Eroare la plasarea comenzii.");
         setSubmitting(false);
+        return;
+      }
+
+      if (data.payment_url) {
+        window.location.href = data.payment_url;
         return;
       }
 
@@ -234,75 +250,172 @@ export default function CheckoutClient() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
         {/* Left — form */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Shipping */}
+          {/* Delivery method */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              📦 Adresa de livrare
+              🚚 Metoda de livrare
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-slate-900 mb-1">
-                  Adresa *
-                </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label
+                className={`
+                  flex items-center gap-3 rounded-xl border-2 p-4 cursor-pointer transition
+                  ${form.delivery_method === "courier"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-slate-200 hover:border-slate-300"
+                  }
+                `}
+              >
                 <input
-                  name="shipping_address"
-                  value={form.shipping_address}
+                  type="radio"
+                  name="delivery_method"
+                  value="courier"
+                  checked={form.delivery_method === "courier"}
                   onChange={handleChange}
-                  required
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                  placeholder="Strada, Nr., Bloc, Scara, Ap."
+                  className="accent-amber-500"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-1">
-                  Oraș *
-                </label>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Curier</div>
+                  <div className="text-xs text-slate-700">Livrare la adresa ta</div>
+                </div>
+              </label>
+              <label
+                className={`
+                  flex items-center gap-3 rounded-xl border-2 p-4 cursor-pointer transition
+                  ${form.delivery_method === "pickup"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-slate-200 hover:border-slate-300"
+                  }
+                `}
+              >
                 <input
-                  name="shipping_city"
-                  value={form.shipping_city}
+                  type="radio"
+                  name="delivery_method"
+                  value="pickup"
+                  checked={form.delivery_method === "pickup"}
                   onChange={handleChange}
-                  required
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                  placeholder="București"
+                  className="accent-amber-500"
                 />
-              </div>
-              <div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Ridicare din depozit</div>
+                  <div className="text-xs text-slate-700">Ridici comanda personal</div>
+                </div>
+              </label>
+            </div>
+
+            {form.delivery_method === "pickup" && warehouses.length > 0 && (
+              <div className="mt-4 space-y-3">
                 <label className="block text-sm font-medium text-slate-900 mb-1">
-                  Cod poștal
+                  Alege depozitul *
                 </label>
-                <input
-                  name="shipping_postal_code"
-                  value={form.shipping_postal_code}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                  placeholder="010101"
-                />
+                {warehouses.map((wh) => (
+                  <label
+                    key={wh.id}
+                    className={`
+                      flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition
+                      ${form.pickup_warehouse_id === wh.id
+                        ? "border-amber-400 bg-amber-50"
+                        : "border-slate-200 hover:border-slate-300"
+                      }
+                    `}
+                  >
+                    <input
+                      type="radio"
+                      name="pickup_warehouse_id"
+                      value={wh.id}
+                      checked={form.pickup_warehouse_id === wh.id}
+                      onChange={handleChange}
+                      className="mt-0.5 accent-amber-500"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{wh.name}</div>
+                      {wh.address && (
+                        <div className="text-xs text-slate-700">{wh.address}</div>
+                      )}
+                    </div>
+                  </label>
+                ))}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-1">
-                  Telefon *
-                </label>
-                <input
-                  name="phone"
-                  value={form.phone}
-                  onChange={handleChange}
-                  required
-                  type="tel"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                  placeholder="07xx xxx xxx"
-                />
+            )}
+          </section>
+
+          {/* Shipping — only for courier */}
+          {form.delivery_method === "courier" && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-slate-900 mb-4">
+                📦 Adresa de livrare
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-slate-900 mb-1">
+                    Adresa *
+                  </label>
+                  <input
+                    name="shipping_address"
+                    value={form.shipping_address}
+                    onChange={handleChange}
+                    required
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                    placeholder="Strada, Nr., Bloc, Scara, Ap."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-900 mb-1">
+                    Oraș *
+                  </label>
+                  <input
+                    name="shipping_city"
+                    value={form.shipping_city}
+                    onChange={handleChange}
+                    required
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                    placeholder="București"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-900 mb-1">
+                    Cod poștal
+                  </label>
+                  <input
+                    name="shipping_postal_code"
+                    value={form.shipping_postal_code}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                    placeholder="010101"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-900 mb-1">
+                    Țara
+                  </label>
+                  <input
+                    name="shipping_country"
+                    value={form.shipping_country}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-1">
-                  Țara
-                </label>
-                <input
-                  name="shipping_country"
-                  value={form.shipping_country}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                />
-              </div>
+            </section>
+          )}
+
+          {/* Phone — always visible */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+              📞 Contact
+            </h2>
+            <div>
+              <label className="block text-sm font-medium text-slate-900 mb-1">
+                Telefon *
+              </label>
+              <input
+                name="phone"
+                value={form.phone}
+                onChange={handleChange}
+                required
+                type="tel"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                placeholder="07xx xxx xxx"
+              />
             </div>
           </section>
 
@@ -324,30 +437,87 @@ export default function CheckoutClient() {
                   placeholder="SC Exemplu SRL"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-1">
-                  CUI / CIF
-                </label>
+              {accountKind?.toLowerCase() === "company" && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-900 mb-1">
+                      CUI / CIF
+                    </label>
+                    <input
+                      name="billing_tax_id"
+                      value={form.billing_tax_id}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                      placeholder="RO12345678"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-900 mb-1">
+                      Nr. Reg. Com.
+                    </label>
+                    <input
+                      name="billing_reg_no"
+                      value={form.billing_reg_no}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                      placeholder="J40/1234/2024"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Payment method */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+              💳 Metoda de plată
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label
+                className={`
+                  flex items-center gap-3 rounded-xl border-2 p-4 cursor-pointer transition
+                  ${form.payment_method === "card"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-slate-200 hover:border-slate-300"
+                  }
+                `}
+              >
                 <input
-                  name="billing_tax_id"
-                  value={form.billing_tax_id}
+                  type="radio"
+                  name="payment_method"
+                  value="card"
+                  checked={form.payment_method === "card"}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                  placeholder="RO12345678"
+                  className="accent-amber-500"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-1">
-                  Nr. Reg. Com.
-                </label>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Card online</div>
+                  <div className="text-xs text-slate-700">Plată securizată prin EuPlătesc</div>
+                </div>
+              </label>
+              <label
+                className={`
+                  flex items-center gap-3 rounded-xl border-2 p-4 cursor-pointer transition
+                  ${form.payment_method === "transfer"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-slate-200 hover:border-slate-300"
+                  }
+                `}
+              >
                 <input
-                  name="billing_reg_no"
-                  value={form.billing_reg_no}
+                  type="radio"
+                  name="payment_method"
+                  value="transfer"
+                  checked={form.payment_method === "transfer"}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
-                  placeholder="J40/1234/2024"
+                  className="accent-amber-500"
                 />
-              </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Transfer bancar</div>
+                  <div className="text-xs text-slate-700">Plată prin ordin de plată</div>
+                </div>
+              </label>
             </div>
           </section>
 
@@ -435,9 +605,17 @@ export default function CheckoutClient() {
                     <p className="text-sm font-medium text-slate-900 truncate">
                       {item.name}
                     </p>
-                    <p className="text-xs text-slate-700">
-                      {item.quantity} × {formatRON(item.final_price)}
-                    </p>
+                    <div className="text-xs text-slate-700">
+                      {item.final_price < item.price_gross ? (
+                        <span className="flex items-center gap-1.5 flex-wrap">
+                          <span className="line-through text-slate-500">{formatRON(item.price_gross)}</span>
+                          <span className="text-green-600 font-medium">{formatRON(item.final_price)}</span>
+                          <span>× {item.quantity}</span>
+                        </span>
+                      ) : (
+                        <span>{item.quantity} × {formatRON(item.final_price)}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-sm font-semibold text-slate-900 flex-shrink-0">
                     {formatRON(item.final_price * item.quantity)}
@@ -461,6 +639,18 @@ export default function CheckoutClient() {
                   <span className="font-semibold">-{classDiscountPct}%</span>
                 </div>
               )}
+              <div className="flex justify-between text-sm text-slate-700">
+                <span>Livrare:</span>
+                <span className="font-medium">
+                  {form.delivery_method === "pickup" ? "Ridicare personală" : "Curier"}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm text-slate-700">
+                <span>Plată:</span>
+                <span className="font-medium">
+                  {form.payment_method === "card" ? "Card online" : "Transfer bancar"}
+                </span>
+              </div>
             </div>
 
             <div className="border-t border-slate-200 mt-4 pt-4 flex justify-between">
@@ -487,7 +677,12 @@ export default function CheckoutClient() {
                 }
               `}
             >
-              {submitting ? "Se procesează..." : "Plasează comanda"}
+              {submitting
+                ? "Se procesează..."
+                : form.payment_method === "card"
+                ? "Plătește cu cardul"
+                : "Plasează comanda"
+              }
             </button>
 
             <Link
