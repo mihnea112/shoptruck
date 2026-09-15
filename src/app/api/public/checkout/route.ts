@@ -329,8 +329,8 @@ export async function POST(req: Request) {
         billingCity: shippingCity || undefined,
         billingCountry: shippingCountry || undefined,
         silentUrl: `${appUrl}/api/public/euplatesc/callback`,
-        successUrl: `${appUrl}/checkout/success`,
-        failedUrl: `${appUrl}/checkout/failed`,
+        successUrl: `${appUrl}/api/public/euplatesc/success`,
+        failedUrl: `${appUrl}/api/public/euplatesc/failed`,
         backToSite: `${appUrl}/checkout`,
       } as any);
 
