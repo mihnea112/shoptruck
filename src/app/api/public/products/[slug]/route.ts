@@ -1,16 +1,8 @@
 // src/app/api/public/products/[slug]/route.ts
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
+import { pool } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/server";
 import { getUserDiscountPct, applyClassDiscount } from "@/lib/discount";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : undefined,
-});
 
 const BUCKET =
   process.env.NEXT_PUBLIC_PRODUCT_IMAGES_BUCKET || "product-images";

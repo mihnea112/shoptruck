@@ -1,14 +1,6 @@
 // src/app/api/admin/products/[id]/discount/route.ts
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : undefined,
-});
+import { pool } from "@/lib/db";
 
 // GET - Get discount info for a product
 export async function GET(

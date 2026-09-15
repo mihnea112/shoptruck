@@ -1,5 +1,6 @@
 import "server-only";
 import postgres from "postgres";
+import { Pool } from "pg";
 
 const rawUrl = process.env.DATABASE_URL;
 const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
@@ -59,3 +60,22 @@ if (process.env.NODE_ENV !== "production") {
   global.__sql = sql;
   global.__sql_url = url;
 }
+
+// Shared pg Pool for routes that use raw `pg` queries
+declare global {
+  // eslint-disable-next-line no-var
+  var __pgPool: Pool | undefined;
+}
+
+export const pool =
+  global.__pgPool ??
+  new Pool({
+    connectionString: url,
+    ssl:
+      process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: false }
+        : undefined,
+    max: 5,
+  });
+
+if (process.env.NODE_ENV !== "production") global.__pgPool = pool;

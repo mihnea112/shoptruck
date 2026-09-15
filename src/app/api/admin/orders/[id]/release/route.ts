@@ -1,24 +1,7 @@
 // src/app/api/admin/orders/[id]/release/route.ts
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
+import { pool } from "@/lib/db";
 import { requireStaff } from "@/lib/auth/api";
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __pgPool: Pool | undefined;
-}
-
-const pool =
-  global.__pgPool ??
-  new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl:
-      process.env.NODE_ENV === "production"
-        ? { rejectUnauthorized: false }
-        : undefined,
-  });
-
-if (process.env.NODE_ENV !== "production") global.__pgPool = pool;
 
 export async function POST(
   req: Request,
