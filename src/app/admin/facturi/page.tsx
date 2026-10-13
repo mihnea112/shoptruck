@@ -21,6 +21,17 @@ type Invoice = {
   customer_name: string;
   customer_vat: string | null;
   created_by_name: string | null;
+  is_b2c: boolean;
+  anaf_status: string | null;
+  anaf_status_detail: string | null;
+  anaf_upload_id: string | null;
+};
+
+const ANAF_STATUS_LABEL: Record<string, { label: string; className: string }> = {
+  trimisa: { label: "Trimisa la ANAF", className: "bg-amber-50 text-amber-700" },
+  ok: { label: "Acceptata ANAF", className: "bg-green-50 text-green-700" },
+  nok: { label: "Respinsa ANAF", className: "bg-red-50 text-red-700" },
+  eroare: { label: "Eroare trimitere", className: "bg-red-50 text-red-700" },
 };
 
 function fmtDate(iso: string) {
@@ -39,6 +50,8 @@ export default function FacturiPage() {
   const [q, setQ] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [sendingAnaf, setSendingAnaf] = useState<string | null>(null);
+  const [anafConnected, setAnafConnected] = useState<boolean | null>(null);
 
   const load = useCallback(async (search = "") => {
     setLoading(true);
@@ -51,6 +64,13 @@ export default function FacturiPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch("/api/admin/efactura/status")
+      .then((r) => r.json())
+      .then((d) => setAnafConnected(Boolean(d?.connected)))
+      .catch(() => setAnafConnected(null));
+  }, []);
 
   function handleSearch(val: string) {
     setQ(val);
@@ -69,6 +89,39 @@ export default function FacturiPage() {
       alert(e.message || "Eroare la generarea PDF-ului.");
     } finally {
       setDownloading(null);
+    }
+  }
+
+  async function sendToAnaf(inv: Invoice) {
+    if (!confirm(`Trimiti factura ${inv.series}/${inv.number} la e-Factura ANAF?`)) return;
+    setSendingAnaf(inv.id);
+    try {
+      const res = await fetch(`/api/admin/invoices/${inv.id}/efactura`, { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) { alert(data.error || "Eroare la trimiterea catre ANAF."); return; }
+      setInvoices((prev) =>
+        prev.map((i) => (i.id === inv.id ? { ...i, anaf_status: "trimisa", anaf_upload_id: data.uploadId } : i))
+      );
+    } catch (e: any) {
+      alert(e.message || "Eroare la trimiterea catre ANAF.");
+    } finally {
+      setSendingAnaf(null);
+    }
+  }
+
+  async function checkAnafStatus(inv: Invoice) {
+    setSendingAnaf(inv.id);
+    try {
+      const res = await fetch(`/api/admin/invoices/${inv.id}/efactura`);
+      const data = await res.json();
+      if (!data.ok) { alert(data.error || "Eroare la verificarea statusului."); return; }
+      setInvoices((prev) =>
+        prev.map((i) => (i.id === inv.id ? { ...i, anaf_status: data.status ?? i.anaf_status } : i))
+      );
+    } catch (e: any) {
+      alert(e.message || "Eroare la verificarea statusului.");
+    } finally {
+      setSendingAnaf(null);
     }
   }
 
@@ -95,6 +148,20 @@ export default function FacturiPage() {
           Toate facturile generate. Pentru a crea o factura noua, deschide o oferta.
         </p>
       </div>
+
+      {anafConnected === false && (
+        <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+          <span className="text-amber-800">
+            e-Factura ANAF nu este conectata. Trimiterea facturilor catre ANAF necesita autorizare cu certificatul digital.
+          </span>
+          <a
+            href="/api/admin/efactura/connect"
+            className="ml-4 shrink-0 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition"
+          >
+            Conecteaza ANAF
+          </a>
+        </div>
+      )}
 
       <input
         type="text"
@@ -125,6 +192,7 @@ export default function FacturiPage() {
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3 text-right">TVA</th>
                 <th className="px-4 py-3">Plata</th>
+                <th className="px-4 py-3">e-Factura</th>
                 <th className="px-4 py-3 w-24"></th>
               </tr>
             </thead>
@@ -158,6 +226,51 @@ export default function FacturiPage() {
                     {fmtNum(inv.total_tax)} RON
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-700">{inv.payment_method}</td>
+                  <td className="px-4 py-3">
+                    {inv.invoice_type === "proforma" ? (
+                      <span className="text-xs text-slate-600">-</span>
+                    ) : inv.anaf_status ? (
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            ANAF_STATUS_LABEL[inv.anaf_status]?.className || "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {ANAF_STATUS_LABEL[inv.anaf_status]?.label || inv.anaf_status}
+                        </span>
+                        {inv.anaf_status === "trimisa" && (
+                          <button
+                            onClick={() => checkAnafStatus(inv)}
+                            disabled={sendingAnaf === inv.id}
+                            className="w-fit text-xs font-semibold text-[#feab1f] hover:underline disabled:opacity-50"
+                          >
+                            {sendingAnaf === inv.id ? "..." : "Verifica status"}
+                          </button>
+                        )}
+                        {inv.anaf_status === "nok" && inv.anaf_status_detail && (
+                          <span className="text-xs text-red-700">{inv.anaf_status_detail}</span>
+                        )}
+                        {inv.anaf_status === "eroare" && (
+                          <button
+                            onClick={() => sendToAnaf(inv)}
+                            disabled={sendingAnaf === inv.id}
+                            className="w-fit text-xs font-semibold text-[#feab1f] hover:underline disabled:opacity-50"
+                          >
+                            {sendingAnaf === inv.id ? "..." : "Retrimite"}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => sendToAnaf(inv)}
+                        disabled={sendingAnaf === inv.id || anafConnected === false}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition disabled:opacity-50"
+                        title={anafConnected === false ? "Conecteaza ANAF mai intai" : undefined}
+                      >
+                        {sendingAnaf === inv.id ? "..." : "Trimite la ANAF"}
+                      </button>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button

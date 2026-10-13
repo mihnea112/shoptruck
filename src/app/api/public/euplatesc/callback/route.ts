@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { getEpClient } from "@/lib/euplatesc";
+import { createAndSendInvoiceForOrder } from "@/lib/efactura/orderInvoice";
 
 export async function POST(req: Request) {
   try {
@@ -62,6 +63,16 @@ export async function POST(req: Request) {
         WHERE id = ${invoiceId}::uuid
       `;
       console.log("[EuPlatesc callback] Order PAID:", invoiceId);
+
+      try {
+        const invoiceResult = await createAndSendInvoiceForOrder(invoiceId);
+        console.log("[EuPlatesc callback] e-Factura result:", JSON.stringify(invoiceResult));
+      } catch (e: any) {
+        // Payment already succeeded — an e-Factura failure here must not affect the order.
+        // The admin can retry the send manually from /admin/facturi, or the cron poller
+        // will pick up anything that did make it to "trimisa".
+        console.error("[EuPlatesc callback] e-Factura auto-send failed:", e?.message);
+      }
     } else {
       await sql`
         UPDATE public."order"

@@ -160,7 +160,7 @@ export default function NewOfferPage() {
 
   const [notes, setNotes] = useState("");
   const [validUntil, setValidUntil] = useState(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
   );
 
   // Logică Vehicle Lookup

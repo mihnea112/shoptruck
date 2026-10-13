@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { imageToPdfDataUri } from "@/lib/offers/pdf-image";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireCustomer } from "@/lib/auth/api";
 import { decryptPII } from "@/lib/crypto/pii";
@@ -178,7 +179,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             tax: taxPct,
             tax_rate: taxFrac,
             primary_image_path: imageUrl ?? rawPath,
-            image_url: imageUrl,
+            image_url: await imageToPdfDataUri(imageUrl) ?? imageUrl,
           };
         }),
       ),

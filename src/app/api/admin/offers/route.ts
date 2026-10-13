@@ -181,7 +181,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const accountId = String(body?.accountId ?? "").trim();
   const notes = body?.notes == null ? null : String(body.notes).trim() || null;
-  const validUntil = body?.validUntil ? String(body.validUntil).trim() : null;
+  const validUntil = body?.validUntil
+      ? String(body.validUntil).trim()
+      : new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0];
 
   const vehicle = body?.vehicle ?? null;
   const items = Array.isArray(body?.items) ? body.items : [];

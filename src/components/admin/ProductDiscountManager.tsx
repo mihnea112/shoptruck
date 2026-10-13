@@ -1,7 +1,7 @@
 // src/components/admin/ProductDiscountManager.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 type DiscountData = {
@@ -33,23 +33,16 @@ export function ProductDiscountManager({
     setLoading(true);
     setError(null);
     try {
-      // First, load the product's current price from the public API to get fresh data
-      const publicData = await fetch(`/api/public/products?limit=100&offset=0`).then(r => r.json());
-      const product = publicData.items?.find((p: any) => p.id === productId);
-
-      if (product) {
-        setProductInfo({
-          name: product.name,
-          sell_gross: product.price_gross
-        });
-      }
-
-      // Then try to load any existing discount
       const data = await apiFetch<any>(
-        `/api/admin/products/${productId}/discount`
+        `/api/admin/products/${productId}/discount`,
+        { cache: "no-store" }
       );
       if (data.product) {
-        setDiscount(data.product);
+        setProductInfo({ name: data.product.name, sell_gross: Number(data.product.sell_gross) });
+        if (data.product.discount_active) {
+          setDiscount(data.product);
+          setNewPrice(String(data.product.discount_price ?? ""));
+        }
       }
     } catch (e: any) {
       // If product not found, that's ok - we're adding a new discount
@@ -58,6 +51,11 @@ export function ProductDiscountManager({
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadDiscount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId]);
 
   async function saveDiscount() {
     if (!newPrice || Number(newPrice) <= 0) {

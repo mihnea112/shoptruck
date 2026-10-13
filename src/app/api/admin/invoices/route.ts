@@ -25,6 +25,7 @@ export async function GET(req: Request) {
           i.delivery_method, i.payment_method, i.plate_no,
           i.total_net, i.total_tax, i.total_gross,
           i.created_at,
+          i.is_b2c, i.anaf_status, i.anaf_status_detail, i.anaf_upload_id,
           a.display_name AS customer_name,
           a.tax_id AS customer_vat,
           p.full_name AS created_by_name
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
           i.delivery_method, i.payment_method, i.plate_no,
           i.total_net, i.total_tax, i.total_gross,
           i.created_at,
+          i.is_b2c, i.anaf_status, i.anaf_status_detail, i.anaf_upload_id,
           a.display_name AS customer_name,
           a.tax_id AS customer_vat,
           p.full_name AS created_by_name

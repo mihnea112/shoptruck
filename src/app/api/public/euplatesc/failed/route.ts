@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+function target(req: Request) {
   const url = new URL(req.url);
-  return NextResponse.redirect(url.origin + "/checkout/failed", 303);
+  const orderId = url.searchParams.get("order_id");
+  return `${url.origin}/checkout/failed${orderId ? `?order_id=${orderId}` : ""}`;
+}
+
+export async function POST(req: Request) {
+  return NextResponse.redirect(target(req), 303);
 }
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  return NextResponse.redirect(url.origin + "/checkout/failed", 303);
+  return NextResponse.redirect(target(req), 303);
 }

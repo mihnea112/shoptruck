@@ -109,6 +109,17 @@ export class ProductImporter {
         return [];
       }
 
+      const cellText = (cell: any): string => {
+        const d = cell?.Data;
+        if (d == null) return "";
+        if (typeof d === "object") return String(d["#text"] ?? "").trim();
+        return String(d).trim();
+      };
+      const headerRow: any = Array.isArray(rows) ? rows[0] : rows;
+      const headerCells = Array.isArray(headerRow?.Cell) ? headerRow.Cell : [headerRow?.Cell];
+      // Headers come from the file itself; strip the " - P12345" property suffix
+      const headers: string[] = headerCells.map((c: any) => cellText(c).replace(/\s+-\s+P\d+$/, ""));
+
       // Skip header row, convert cells to objects
       const dataRows = Array.isArray(rows) ? rows.slice(1) : [];
       console.log(`[Importer] Found ${Array.isArray(rows) ? rows.length : 1} total rows (including header)`);
@@ -122,28 +133,6 @@ export class ProductImporter {
           console.log("[Importer] Sample cell structure (first cell of first data row):");
           console.log("[Importer]", JSON.stringify(cells[0], null, 2).substring(0, 500));
         }
-        const headers = [
-          "ProductID", "ProductCode", "Category", "Stock", "Enabled", "Featured",
-          "FeaturedSingle", "FeaturedCategory", "FeaturedCategorySingle", "ProductName",
-          "VariantName", "MasterProductCode", "Intro", "Description", "BrandName",
-          "OrderID", "Image", "AddImages", "URL", "eMagIntegrated", "FlancoIntegrated",
-          "CreationDate", "ModifiedDate", "ValidFrom", "ExpireAfter", "MultipleChildren",
-          "EstimatedDeliveryDate", "NumberOfDaysFromOrder", "MetaTitle", "MetaKeywords",
-          "MetaDescription", "ComplementaryProductsCodes", "RecommendedProductsCodes",
-          "FamilyProductsCodes", "EAN", "VAT", "PreorderAvailable", "AskForQuote",
-          "BaseUnit", "SaleUnit", "UnitCoefficientSale", "ParcelPercentage", "GreenTax",
-          "Price11018", "RRPrice11018", "Price11762", "RRPrice11762", "Price11763",
-          "RRPrice11763", "Price11764", "RRPrice11764", "Price11765", "RRPrice11765",
-          "Price11766", "RRPrice11766", "Price12811", "RRPrice12811", "Price14332",
-          "RRPrice14332", "Shipping221", "Shipping252", "Shipping253", "Shipping254",
-          "eMAGCommisiontype", "eMAGCommisionvalue", "TipProdus", "Garantieluni",
-          "eMAGHandlingtime", "Echivalenta", "Brand", "Weight", "CurentPornireA",
-          "AmperajAh", "ProductImage", "AddImages2", "DetaliiProduseHTML", "EANBarcode",
-          "externalID", "StagingPrice", "ModeleMAG", "TipVehiculeMAG", "MarcaeMAG",
-          "TipProduseMAG", "eMAGProductName", "TipProduseMAG2", "DescriptioneMAG",
-          "EmagHeightmm", "EmagLengthmm", "EmagWidthmm", "EmagWeightg", "Length",
-          "TipProduseMAG3", "WeightFinal"
-        ];
 
         cells.forEach((cell: any, index: number) => {
           if (!headers[index]) return;
@@ -173,7 +162,9 @@ export class ProductImporter {
           }
 
           // Convert to string and trim
-          obj[headers[index]] = String(value).trim();
+          const v = String(value).trim();
+          // Duplicate header names (e.g. Weight): keep the first non-empty value
+          if (obj[headers[index]] === undefined || obj[headers[index]] === "") obj[headers[index]] = v;
         });
 
         return obj;

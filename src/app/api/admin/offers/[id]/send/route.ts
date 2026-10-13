@@ -3,6 +3,10 @@ import { sql } from "@/lib/db";
 import { requireStaff } from "@/lib/auth/api";
 import { sendEmail } from "@/lib/email/sender";
 import { offerTemplate } from "@/lib/email/templates";
+import React from "react";
+import { renderToBuffer } from "@react-pdf/renderer";
+import OfferPDFDocument from "@/components/admin/OfferPdfDocument";
+import { GET as getOffer } from "../route";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -121,12 +125,29 @@ export async function POST(
 
     const emailTemplate = offerTemplate(emailData);
 
+    // Generate the PDF (reuses the GET handler so images/customer data match the download)
+    const offerRes = await getOffer(req, { params: Promise.resolve({ id: offerId }) });
+    const offerJson = await offerRes.json();
+    if (!offerJson?.ok) {
+      return json({ ok: false, error: "Nu s-a putut genera PDF-ul ofertei." }, 500);
+    }
+    const pdfBuffer = await renderToBuffer(
+      React.createElement(OfferPDFDocument, { offer: offerJson.data }) as any,
+    );
+
     // Send email
     await sendEmail({
       to: offer.account_email,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
       text: emailTemplate.text,
+      attachments: [
+        {
+          filename: `Oferta-${String(offer.id).slice(0, 6).toUpperCase()}.pdf`,
+          content: Buffer.from(pdfBuffer),
+          contentType: "application/pdf",
+        },
+      ],
     });
 
     return json({

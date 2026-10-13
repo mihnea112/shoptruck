@@ -1,6 +1,8 @@
 // src/app/api/admin/products/[id]/discount/route.ts
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { pool } from "@/lib/db";
+import { notifyClientsOfPromotion } from "@/lib/email/promotion-emails";
 
 // GET - Get discount info for a product
 export async function GET(
@@ -61,11 +63,16 @@ export async function PUT(
       );
     }
 
+    const { rows: prev } = await pool.query(
+      `SELECT discount_active, discount_price FROM product WHERE id = $1`,
+      [id]
+    );
+
     const { rows } = await pool.query(
       `UPDATE product
       SET discount_price = $1, discount_active = $2
       WHERE id = $3
-      RETURNING id, name, discount_price, discount_active,
+      RETURNING id, name, slug, discount_price, discount_active,
         (SELECT CEIL(buy_price_net * (1 + profit_margin_pct/100.0) *
           (1 + CASE WHEN rate <= 1 THEN rate ELSE rate/100 END))
          FROM tax_rate WHERE id = product.tax_rate_id) AS sell_gross`,
@@ -84,6 +91,21 @@ export async function PUT(
       discount_active && discount_price
         ? Math.round((1 - discount_price / product.sell_gross) * 100)
         : 0;
+
+    // Notify all clients when a product is put on promotion (or its promo price changes)
+    const wasActive = !!prev[0]?.discount_active;
+    const priceChanged = Number(prev[0]?.discount_price) !== Number(discount_price);
+    if (discount_active && discount_price && (!wasActive || priceChanged)) {
+      after(() =>
+        notifyClientsOfPromotion({
+          name: product.name,
+          slug: product.slug,
+          originalPrice: Number(product.sell_gross),
+          discountPrice: Number(discount_price),
+          discountPercentage: discount_percentage,
+        })
+      );
+    }
 
     return NextResponse.json({
       ok: true,

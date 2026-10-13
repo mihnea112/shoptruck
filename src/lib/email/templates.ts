@@ -446,4 +446,62 @@ function formatRON(amount: number): string {
   }).format(amount);
 }
 
+function escapeHtml(v: string): string {
+  return v
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Promotion Email Template (sent to all clients when a product gets a discount)
+export function promotionTemplate(data: {
+  customerName?: string | null;
+  productName: string;
+  productUrl: string;
+  originalPrice: number;
+  discountPrice: number;
+  discountPercentage: number;
+}): { subject: string; html: string; text: string } {
+  const name = escapeHtml(data.productName);
+  const greeting = data.customerName ? `Bună ${escapeHtml(data.customerName)},` : "Bună,";
+  const subject = `Promoție: ${data.productName} -${data.discountPercentage}%`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: ${lightBg}; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        ${emailHeader()}
+        <div style="padding: 30px;">
+          <h2 style="color: ${darkColor}; margin: 0 0 20px 0;">Produs nou la promoție!</h2>
+          <p style="color: #475569; line-height: 1.6; margin: 0;">
+            ${greeting}<br><br>
+            Am pus la promoție un produs care te-ar putea interesa:
+          </p>
+          <div style="background: ${lightBg}; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid ${brandColor};">
+            <p style="margin: 0 0 10px 0; color: ${darkColor}; font-size: 18px; font-weight: bold;">${name}</p>
+            <p style="margin: 0; color: #475569;">
+              <span style="text-decoration: line-through;">${formatRON(data.originalPrice)}</span>
+              &nbsp;<strong style="color: #16a34a; font-size: 20px;">${formatRON(data.discountPrice)}</strong>
+              &nbsp;<span style="background: #fee2e2; color: #b91c1c; padding: 2px 8px; border-radius: 12px; font-weight: bold;">-${data.discountPercentage}%</span>
+            </p>
+          </div>
+          <div style="text-align: center;">${button("Vezi produsul", data.productUrl)}</div>
+        </div>
+        ${emailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `${greeting}\n\n${data.productName} este acum la promoție: ${formatRON(data.discountPrice)} în loc de ${formatRON(data.originalPrice)} (-${data.discountPercentage}%).\n\n${data.productUrl}`;
+
+  return { subject, html, text };
+}
+
 export { formatRON };

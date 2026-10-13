@@ -99,18 +99,25 @@ export default function DiscountsAdmin() {
     setError(null);
     try {
       // Get products WITH discounts from database
-      const sp = new URLSearchParams();
-      sp.set("limit", "1000");
-      sp.set("offset", "0");
-      sp.set("discount_active", "true"); // Only products WITH discounts
+      // The public API caps each page at 100 items, so page through all results
+      const all: Product[] = [];
+      const pageSize = 100;
+      for (let offset = 0; ; offset += pageSize) {
+        const sp = new URLSearchParams();
+        sp.set("limit", String(pageSize));
+        sp.set("offset", String(offset));
+        sp.set("discount_active", "true"); // Only products WITH discounts
 
-      const res = await fetch(`/api/public/products?${sp}`);
-      const data = await res.json();
+        const res = await fetch(`/api/public/products?${sp}`, { cache: "no-store" });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Failed to load products");
 
-      if (!data.ok) throw new Error(data.error || "Failed to load products");
+        all.push(...(data.items || []));
+        if (all.length >= (data.total || 0) || !(data.items || []).length) break;
+      }
 
       // API already filters for discounted products, so no need to filter again
-      let filtered = (data.items || []);
+      let filtered = all;
 
       // Apply filters
       if (searchQuery) {
