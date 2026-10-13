@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -63,6 +63,11 @@ export default function CheckoutClient() {
   const [items, setItems] = useState<CheckoutItem[]>([]);
   const [totals, setTotals] = useState<Totals>({ net: 0, tax: 0, gross: 0 });
   const [classDiscountPct, setClassDiscountPct] = useState(0);
+  const profileLoaded = useRef(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState("");
+  const [codePct, setCodePct] = useState(0);
+  const [codeMsg, setCodeMsg] = useState("");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [accountKind, setAccountKind] = useState<string | null>(null);
 
@@ -85,7 +90,7 @@ export default function CheckoutClient() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/public/checkout");
+        const res = await fetch(`/api/public/checkout${appliedCode ? `?code=${encodeURIComponent(appliedCode)}` : ""}`);
         const data = await res.json();
 
         if (!res.ok || !data.ok) {
@@ -101,10 +106,18 @@ export default function CheckoutClient() {
         setItems(data.items || []);
         setTotals(data.totals || { net: 0, tax: 0, gross: 0 });
         setClassDiscountPct(data.class_discount_pct || 0);
+        setCodePct(data.code_pct || 0);
+        if (appliedCode && !data.code_pct) {
+          setCodeMsg("Codul nu este valid sau a expirat.");
+          setAppliedCode("");
+        } else if (appliedCode) {
+          setCodeMsg(`Cod aplicat: -${data.code_pct}%`);
+        }
         setWarehouses(data.warehouses || []);
 
         const p: CheckoutProfile | null = data.profile;
-        if (p) {
+        if (p && !profileLoaded.current) {
+          profileLoaded.current = true;
           setAccountKind(p.kind);
           setForm((prev) => ({
             ...prev,
@@ -128,7 +141,7 @@ export default function CheckoutClient() {
         setLoading(false);
       }
     })();
-  }, [router]);
+  }, [router, appliedCode]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -149,7 +162,7 @@ export default function CheckoutClient() {
       const res = await fetch("/api/public/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, discount_code: appliedCode }),
       });
       const data = await res.json();
 
@@ -633,6 +646,24 @@ export default function CheckoutClient() {
                 <span>TVA:</span>
                 <span className="font-medium">{formatRON(totals.tax)}</span>
               </div>
+              <div className="flex gap-2 pt-1">
+                <input
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                  placeholder="Cod de reducere"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setCodeMsg(""); setAppliedCode(codeInput.trim()); }}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  Aplică
+                </button>
+              </div>
+              {codeMsg && (
+                <p className={`text-sm font-medium ${codePct ? "text-green-700" : "text-red-700"}`}>{codeMsg}</p>
+              )}
               {classDiscountPct > 0 && (
                 <div className="flex justify-between text-sm text-indigo-700">
                   <span>Discount clasă:</span>

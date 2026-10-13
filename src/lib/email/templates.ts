@@ -505,3 +505,36 @@ export function promotionTemplate(data: {
 }
 
 export { formatRON };
+
+export function welcomeDiscountTemplate(data: {
+  code: string;
+  pct: number;
+  validDays: number;
+  shopUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Codul tău de reducere ${data.pct}% ShopTruck`;
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: ${lightBg}; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        ${emailHeader()}
+        <div style="padding: 30px;">
+          <h2 style="color: ${darkColor}; margin: 0 0 16px 0;">Felicitări, ai câștigat ${data.pct}% reducere!</h2>
+          <p style="color: #64748b; line-height: 1.6; margin: 0 0 20px 0;">
+            Folosește codul de mai jos la finalizarea comenzii. Este valabil ${data.validDays} de zile și poate fi folosit o singură dată.
+          </p>
+          <div style="text-align: center; background: ${lightBg}; border: 2px dashed ${brandColor}; border-radius: 10px; padding: 18px; margin: 0 0 24px 0;">
+            <span style="font-size: 26px; font-weight: bold; letter-spacing: 3px; color: ${darkColor};">${escapeHtml(data.code)}</span>
+          </div>
+          <div style="text-align: center;">${button("Începe cumpărăturile", data.shopUrl)}</div>
+        </div>
+        ${emailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+  const text = `Felicitări! Codul tău de reducere de ${data.pct}%: ${data.code}\nValabil ${data.validDays} zile, o singură utilizare.\n${data.shopUrl}`;
+  return { subject, html, text };
+}

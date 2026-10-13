@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/server";
 import { getUserDiscountPct, applyClassDiscount } from "@/lib/discount";
+import { getValidCodePct } from "@/lib/welcome-discount";
 import { decryptPII, encryptPII } from "@/lib/crypto/pii";
 import { getEpClient, getAppUrl } from "@/lib/euplatesc";
 
@@ -21,7 +22,7 @@ function json(data: any, status = 200) {
 }
 
 // GET /api/public/checkout — prefill data (profile + cart summary)
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await getSessionUser();
     if (!user) return json({ ok: false, error: "Neautorizat." }, 401);
@@ -66,6 +67,7 @@ export async function GET() {
 
     // Fetch cart with prices
     const classDiscountPct = await getUserDiscountPct(user.userId);
+    const codePct = await getValidCodePct(new URL(req.url).searchParams.get("code"));
 
     const cartItems = await sql`
       SELECT
@@ -105,7 +107,8 @@ export async function GET() {
       const originalGross = Number(row.price_gross);
       const productDiscountPrice = row.discount_active ? Number(row.discount_price) : null;
       const basePrice = productDiscountPrice ?? originalGross;
-      const finalPrice = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : basePrice;
+      const afterClass = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : basePrice;
+      const finalPrice = codePct ? applyClassDiscount(afterClass, codePct) : afterClass;
       const taxRate = Number(row.tax_rate) <= 1 ? Number(row.tax_rate) : Number(row.tax_rate) / 100;
       const unitNet = finalPrice / (1 + taxRate);
 
@@ -141,6 +144,7 @@ export async function GET() {
         gross: Math.round(totalGross * 100) / 100,
       },
       class_discount_pct: classDiscountPct,
+      code_pct: codePct,
       warehouses,
     });
   } catch (e: any) {
@@ -193,6 +197,11 @@ export async function POST(req: Request) {
 
     // Fetch cart items with computed prices
     const classDiscountPct = await getUserDiscountPct(user.userId);
+    const discountCode = String(body?.discount_code || "").trim().toUpperCase();
+    const codePct = await getValidCodePct(discountCode);
+    if (discountCode && !codePct) {
+      return json({ ok: false, error: "Codul de reducere nu este valid sau a expirat." }, 400);
+    }
 
     const cartItems = await sql`
       SELECT
@@ -220,7 +229,8 @@ export async function POST(req: Request) {
       const originalGross = Number(row.price_gross);
       const productDiscountPrice = row.discount_active ? Number(row.discount_price) : null;
       const basePrice = productDiscountPrice ?? originalGross;
-      const finalPrice = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : basePrice;
+      const afterClass = classDiscountPct > 0 ? applyClassDiscount(basePrice, classDiscountPct) : basePrice;
+      const finalPrice = codePct ? applyClassDiscount(afterClass, codePct) : afterClass;
       const taxRate = Number(row.tax_rate) <= 1 ? Number(row.tax_rate) : Number(row.tax_rate) / 100;
       const unitNet = finalPrice / (1 + taxRate);
       const qty = Number(row.quantity);
@@ -273,6 +283,18 @@ export async function POST(req: Request) {
     `;
 
     const resultOrderId = order.id;
+
+    if (codePct) {
+      const used = (await sql`
+        UPDATE discount_code SET used_at = now(), order_id = ${resultOrderId}::uuid
+        WHERE code = ${discountCode} AND used_at IS NULL AND expires_at > now()
+        RETURNING id
+      `) as any[];
+      if (!used.length) {
+        await sql`DELETE FROM public."order" WHERE id = ${resultOrderId}::uuid`;
+        return json({ ok: false, error: "Codul de reducere a fost deja folosit." }, 400);
+      }
+    }
 
     // Insert order items
     for (const item of orderItems) {
