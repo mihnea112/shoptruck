@@ -45,6 +45,7 @@ export async function GET(
       tr.rate AS tax_rate,
 
       b.name AS brand_name,
+      b.logo_path AS brand_logo_path,
       c.name AS category_name,
 
       pc_primary.code_id AS primary_code,
@@ -310,6 +311,7 @@ export async function GET(
       description: r.description ?? null,
 
       brand_name: r.brand_name ?? null,
+      brand_logo_url: toPublicUrl(r.brand_logo_path ?? null),
       category_name: r.category_name ?? null,
       primary_code: primaryCode,
       equivalent_codes: equivalentCodes,

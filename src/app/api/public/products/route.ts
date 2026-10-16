@@ -101,7 +101,7 @@ export async function GET(req: Request) {
       ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.created_at ASC LIMIT 1
     ) img ON true
     WHERE ${whereClause}
-    ORDER BY ${orderBy}
+    ORDER BY (img.primary_image_path IS NULL) ASC, ${orderBy}, p.id ASC
     LIMIT $${idx} OFFSET $${idx + 1}
   `;
   values.push(limit, offset);

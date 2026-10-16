@@ -69,6 +69,7 @@ type HomeCategory = {
   slug: string;
   name: string;
   product_count: number;
+  image_url?: string | null;
 };
 
 async function getCategories(): Promise<HomeCategory[]> {
@@ -79,8 +80,12 @@ async function getCategories(): Promise<HomeCategory[]> {
   });
   const data = await res.json().catch(() => ({}));
   if (!data?.ok || !Array.isArray(data.items)) return [];
-  // Only categories that have products
-  return data.items.filter((c: any) => Number(c.product_count) > 0).slice(0, 8);
+  // Top-level categories that have products (counts include sub-categories), biggest first,
+  // "Alte produse" last
+  return data.items
+    .filter((c: any) => !c.parent_id && Number(c.product_count) > 0)
+    .sort((a: any, b: any) => (a.name === "Alte produse" ? 1 : b.name === "Alte produse" ? -1 : b.product_count - a.product_count))
+    .slice(0, 8);
 }
 
 async function getLatestProducts(limit = 4): Promise<HomeProduct[]> {
@@ -317,6 +322,10 @@ export default async function HomePage() {
                     href={`/catalog?categoryId=${cat.id}`}
                     className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                   >
+                    {cat.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cat.image_url} alt="" loading="lazy" className="mb-3 h-28 w-full rounded-xl bg-slate-50 object-contain" />
+                    )}
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <h3 className="text-base font-semibold text-slate-900 group-hover:text-[#feab1f]">
                         {cat.name}

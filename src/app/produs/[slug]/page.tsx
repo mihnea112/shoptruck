@@ -33,6 +33,7 @@ type DbProduct = {
   description: string | null;
 
   brand_name: string | null;
+  brand_logo_url?: string | null;
   category_name: string | null;
 
   primary_code: string | null;
@@ -246,7 +247,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
                     <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
                       Brand
                     </div>
-                    <div className="text-sm font-medium text-slate-900">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                      {product.brand_logo_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={product.brand_logo_url} alt={brand} className="h-8 w-auto max-w-[96px] object-contain" />
+                      )}
                       {brand}
                     </div>
                   </div>

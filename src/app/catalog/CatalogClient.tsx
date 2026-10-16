@@ -28,12 +28,20 @@ type Product = {
   primary_image_url: string | null;
 };
 
+function Thumb({ src }: { src?: string | null }) {
+  if (!src) return null;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" loading="lazy" className="h-6 w-6 shrink-0 rounded bg-white object-contain" />;
+}
+
 type FilterOption = {
   id: string;
   name: string;
   count?: number;
   parent_id?: string | null;
   slug?: string;
+  logo_url?: string | null;
+  image_url?: string | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -496,7 +504,7 @@ export default function CatalogClient() {
                                       className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
                                         ${categoryId === child.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
                                     >
-                                      {child.name}
+                                      <span className="flex items-center gap-2"><Thumb src={child.image_url} />{child.name}</span>
                                     </button>
                                   </li>
                                 ))}
@@ -509,7 +517,7 @@ export default function CatalogClient() {
                             className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
                               ${categoryId === parent.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
                           >
-                            {parent.name}
+                            <span className="flex items-center gap-2"><Thumb src={parent.image_url} />{parent.name}</span>
                           </button>
                         )}
                       </li>
@@ -562,7 +570,7 @@ export default function CatalogClient() {
                           className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
                             ${brandId === b.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
                         >
-                          {b.name}
+                          <span className="flex items-center gap-2"><Thumb src={b.logo_url} />{b.name}</span>
                         </button>
                       </li>
                     ))}
@@ -575,7 +583,7 @@ export default function CatalogClient() {
                               className={`w-full rounded-lg px-3 py-2 text-left text-sm transition
                                 ${brandId === b.id ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600 hover:bg-slate-100"}`}
                             >
-                              {b.name}
+                              <span className="flex items-center gap-2"><Thumb src={b.logo_url} />{b.name}</span>
                             </button>
                           </li>
                         ))}
