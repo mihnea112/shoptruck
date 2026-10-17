@@ -76,12 +76,44 @@ export async function GET(req: Request) {
       LIMIT ${limit}
     `;
 
-    const items = rows.map((r: any) => ({
-      ...r,
-      phone: decryptPII(r.phone) || r.phone,
-      tax_id: decryptPII(r.tax_id) || r.tax_id,
-      reg_no: decryptPII(r.reg_no) || r.reg_no,
-    }));
+    // Partners (from Parteneri) that have no linked account yet; an account is
+    // created lazily when one is picked (POST /api/admin/partners/[id]/account).
+    const partnerRows = (await sql`
+      SELECT p.id, p.kind, p.display_name, p.legal_name, p.email, p.phone, p.tax_id, p.reg_no, p.is_vat_payer
+      FROM partner p
+      WHERE p.account_id IS NULL
+        AND p.partner_type IN ('CLIENT', 'BOTH')
+        AND (
+          p.display_name ILIKE ${term}
+          OR p.legal_name ILIKE ${term}
+          OR p.email ILIKE ${term}
+          OR p.phone ILIKE ${term}
+          OR p.tax_id ILIKE ${term}
+          OR p.reg_no ILIKE ${term}
+        )
+      ORDER BY p.display_name
+      LIMIT ${limit}
+    `) as any[];
+
+    const items = [
+      ...rows.map((r: any) => ({
+        ...r,
+        phone: decryptPII(r.phone) || r.phone,
+        tax_id: decryptPII(r.tax_id) || r.tax_id,
+        reg_no: decryptPII(r.reg_no) || r.reg_no,
+      })),
+      ...partnerRows.map((r: any) => ({
+        partner_id: r.id,
+        kind: String(r.kind || "").toUpperCase() === "INDIVIDUAL" ? "INDIVIDUAL" : "COMPANY",
+        display_name: r.display_name,
+        legal_name: r.legal_name,
+        email: r.email,
+        is_vat_payer: r.is_vat_payer,
+        phone: decryptPII(r.phone) || r.phone,
+        tax_id: decryptPII(r.tax_id) || r.tax_id,
+        reg_no: decryptPII(r.reg_no) || r.reg_no,
+      })),
+    ];
     return json({ ok: true, items, limit });
   } catch (e: any) {
     const status = e instanceof ApiError ? e.status : 500;

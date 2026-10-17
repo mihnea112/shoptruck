@@ -21,6 +21,8 @@ export type ProductDTO = {
 
 type Props = {
   onSelect: (p: ProductDTO) => void;
+  /** Called after a product was edited from the preview (name / price changed). */
+  onProductUpdated?: (p: ProductDTO) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -46,12 +48,57 @@ function ProductModal({
   anchorRect,
   onSelect,
   onClose,
+  onUpdated,
+  modalRef,
+  onHoverChange,
+  onEditingChange,
 }: {
   product: ProductDTO;
   anchorRect: DOMRect;
   onSelect: (p: ProductDTO) => void;
   onClose: () => void;
+  onUpdated: (p: ProductDTO) => void;
+  modalRef: React.RefObject<HTMLDivElement | null>;
+  onHoverChange: (over: boolean) => void;
+  onEditingChange: (editing: boolean) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(product.name);
+  const [price, setPrice] = useState(String(product.price ?? ""));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // a different product was previewed: reset the form
+  useEffect(() => {
+    setEditing(false);
+    onEditingChange(false);
+    setName(product.name);
+    setPrice(String(product.price ?? ""));
+    setSaveError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
+
+  async function save() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}/quick`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ name: name.trim(), price: price.replace(",", ".") }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Nu s-a putut salva.");
+      onUpdated({ ...product, name: data.item.name, price: Number(data.item.price) });
+      setEditing(false);
+      onEditingChange(false);
+    } catch (e: any) {
+      setSaveError(e?.message || "Nu s-a putut salva.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const imgUrl = getImageUrl(product.primary_image_path);
   const stockAvail = Number(product.stock_available ?? 0);
   const inStock = stockAvail > 0;
@@ -76,12 +123,15 @@ function ProductModal({
 
   return createPortal(
     <>
-      {/* Invisible backdrop to close on click-outside */}
-      <div className="fixed inset-0 z-[998]" onClick={onClose} />
+      {/* Backdrop only while editing, so hovering other results keeps working */}
+      {editing && <div className="fixed inset-0 z-[998]" onClick={onClose} />}
       <div
+        ref={modalRef}
         className="fixed z-[999] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
         style={{ left, top, width: MODAL_W }}
         onClick={(e) => e.stopPropagation()}
+        onMouseEnter={() => onHoverChange(true)}
+        onMouseLeave={() => onHoverChange(false)}
       >
         {/* Image */}
         <div className="relative h-40 w-full flex-shrink-0 bg-slate-100">
@@ -116,9 +166,18 @@ function ProductModal({
 
         {/* Info */}
         <div className="flex flex-col gap-2 p-4">
-          <div className="text-sm font-bold leading-tight text-slate-900">
-            {product.name}
-          </div>
+          {editing ? (
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-[#feab1f]"
+              aria-label="Nume produs"
+            />
+          ) : (
+            <div className="text-sm font-bold leading-tight text-slate-900">
+              {product.name}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
             {product.brand_name && (
@@ -140,28 +199,84 @@ function ProductModal({
 
           <div className="mt-1 flex items-end justify-between">
             <div>
-              <div className="text-lg font-bold text-slate-900">
-                {formatMoney(product.price)}{" "}
-                <span className="text-xs font-normal text-slate-400">
-                  lei net
-                </span>
-              </div>
+              {editing ? (
+                <label className="flex items-center gap-1.5 text-lg font-bold text-slate-900">
+                  <input
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    inputMode="decimal"
+                    className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-base outline-none focus:border-[#feab1f]"
+                    aria-label="Preț net"
+                  />
+                  <span className="text-xs font-normal text-slate-500">lei net</span>
+                </label>
+              ) : (
+                <div className="text-lg font-bold text-slate-900">
+                  {formatMoney(product.price)}{" "}
+                  <span className="text-xs font-normal text-slate-500">
+                    lei net
+                  </span>
+                </div>
+              )}
               <div className="text-[11px] text-slate-500">
                 TVA {Math.round(Number(product.vat_percent) || 0)}%
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                onSelect(product);
-                onClose();
-              }}
-              className="rounded-full bg-[#feab1f] px-4 py-2 text-sm font-bold text-white hover:bg-[#e09800] transition"
-            >
-              Selectează
-            </button>
+            {editing ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(false);
+                    onEditingChange(false);
+                    setName(product.name);
+                    setPrice(String(product.price ?? ""));
+                    setSaveError(null);
+                  }}
+                  className="rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Anulează
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={save}
+                  className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {saving ? "Salvez…" : "Salvează"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(true);
+                    onEditingChange(true);
+                  }}
+                  className="rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Editează
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelect(product);
+                    onClose();
+                  }}
+                  className="rounded-full bg-[#feab1f] px-4 py-2 text-sm font-bold text-white hover:bg-[#e09800] transition"
+                >
+                  Selectează
+                </button>
+              </div>
+            )}
           </div>
+          {saveError && (
+            <div className="rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-700">
+              {saveError}
+            </div>
+          )}
         </div>
       </div>
     </>,
@@ -172,6 +287,7 @@ function ProductModal({
 // ─── Main component ───────────────────────────────────────────
 export default function ProductAutocomplete({
   onSelect,
+  onProductUpdated,
   placeholder = "Caută după cod / echivalență / nume / SKU…",
   disabled,
   className,
@@ -185,6 +301,9 @@ export default function ProductAutocomplete({
   const [hoveredItemRect, setHoveredItemRect] = useState<DOMRect | null>(null);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const overModalRef = useRef(false);
+  const editingRef = useRef(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,6 +314,8 @@ export default function ProductAutocomplete({
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (!rootRef.current) return;
+      // clicks inside the (portal) preview must not close the dropdown
+      if (modalRef.current?.contains(e.target as Node)) return;
       if (!rootRef.current.contains(e.target as Node)) {
         setOpen(false);
         setHovered(null);
@@ -370,11 +491,11 @@ export default function ProductAutocomplete({
                       onClick={() => pick(p)}
                       onMouseEnter={(e) => handleItemHover(p, e.currentTarget)}
                       onMouseLeave={() => {
-                        // small delay so user can move mouse into modal
-                        setTimeout(
-                          () => setHovered((h) => (h?.id === p.id ? null : h)),
-                          80,
-                        );
+                        // delay so the pointer can travel into the preview
+                        setTimeout(() => {
+                          if (overModalRef.current || editingRef.current) return;
+                          setHovered((h) => (h?.id === p.id ? null : h));
+                        }, 250);
                       }}
                       className={`w-full px-3 py-2 text-left transition ${
                         isHovered ? "bg-amber-50" : "hover:bg-slate-50"
@@ -452,7 +573,28 @@ export default function ProductAutocomplete({
           product={hovered}
           anchorRect={hoveredItemRect}
           onSelect={pick}
-          onClose={() => setHovered(null)}
+          onClose={() => {
+            editingRef.current = false;
+            overModalRef.current = false;
+            setHovered(null);
+          }}
+          modalRef={modalRef}
+          onHoverChange={(over) => {
+            overModalRef.current = over;
+            if (!over && !editingRef.current) {
+              setTimeout(() => {
+                if (!overModalRef.current && !editingRef.current) setHovered(null);
+              }, 250);
+            }
+          }}
+          onEditingChange={(v) => {
+            editingRef.current = v;
+          }}
+          onUpdated={(updated) => {
+            setItems((list) => list.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
+            setHovered(updated);
+            onProductUpdated?.(updated);
+          }}
         />
       )}
     </div>

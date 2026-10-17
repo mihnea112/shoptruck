@@ -391,12 +391,18 @@ export default function PartnersUI() {
                         {p.credit_limit > 0 ? `${Number(p.credit_limit).toLocaleString("ro-RO")} lei / ${p.credit_days}z` : "–"}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button onClick={() => openEdit(p.id)} className="mr-2 text-[#b57712] hover:underline text-xs font-semibold">
-                          Editează
-                        </button>
-                        <button onClick={() => deletePartner(p.id, p.display_name)} className="text-red-500 hover:underline text-xs font-semibold">
-                          Șterge
-                        </button>
+                        {(p as any).from_account ? (
+                          <span className="text-xs font-semibold text-slate-600">Cont client</span>
+                        ) : (
+                          <>
+                            <button onClick={() => openEdit(p.id)} className="mr-2 text-[#b57712] hover:underline text-xs font-semibold">
+                              Editează
+                            </button>
+                            <button onClick={() => deletePartner(p.id, p.display_name)} className="text-red-500 hover:underline text-xs font-semibold">
+                              Șterge
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}

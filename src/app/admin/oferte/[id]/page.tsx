@@ -645,6 +645,23 @@ export default function EditOfferPage({
                   <td className="px-4 py-2 border-t border-slate-200 relative">
                     <ProductAutocomplete
                       onSelect={(p) => handleProductSelect(item.uiId, p)}
+                      onProductUpdated={(p) =>
+                        // refresh every line that uses the edited product
+                        setItems((list) =>
+                          list.map((i) =>
+                            i.productId === p.id
+                              ? {
+                                  ...i,
+                                  name: p.name,
+                                  price: Number(p.price),
+                                  basePrice: Number(p.price),
+                                  priceDraft: Number(p.price).toFixed(2),
+                                  priceError: null,
+                                }
+                              : i,
+                          ),
+                        )
+                      }
                       placeholder={item.name || "Caută produs..."}
                     />
                   </td>

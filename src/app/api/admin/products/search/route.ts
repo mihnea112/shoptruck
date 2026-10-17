@@ -37,8 +37,27 @@ export async function GET(req: Request) {
   const qNorm = normalizeCode(qRaw);
   const qLike = `%${qRaw}%`;
 
+  // NOTE: no ::text casts on uuid columns (they defeat the indexes and made this query time
+  // out on a 50k-product catalog). Codes live in product_code.code_id as raw text; legacy rows
+  // point at part_code instead, so both are searched.
+  const qNormLike = qNorm ? `%${qNorm}%` : null;
   const rows = await sql`
-    SELECT DISTINCT
+    WITH hits AS (
+      SELECT p.id FROM product p
+      WHERE p.is_active = true
+        AND (p.sku ILIKE ${qLike} OR p.slug ILIKE ${qLike} OR p.name ILIKE ${qLike})
+      UNION
+      SELECT pc.product_id FROM product_code pc
+      WHERE pc.code_id ILIKE ${qLike}
+         OR (${qNormLike}::text IS NOT NULL
+             AND regexp_replace(lower(pc.code_id), '[^a-z0-9]', '', 'g') LIKE ${qNormLike})
+      UNION
+      SELECT pc.product_id FROM product_code pc
+      JOIN part_code c ON c.id::text = pc.code_id
+      WHERE c.code_norm = ${qNorm} OR c.code_raw ILIKE ${qLike}
+         OR (${qNormLike}::text IS NOT NULL AND c.code_norm LIKE ${qNormLike})
+    )
+    SELECT
       p.id, p.sku, p.slug, p.name,
       p.buy_price_net, p.profit_margin_pct, p.is_active,
       p.stock_on_hand, p.stock_reserved,
@@ -50,32 +69,23 @@ export async function GET(req: Request) {
       (CEILING((p.buy_price_net * (1 + (p.profit_margin_pct / 100.0))) * 100) / 100.0) AS price,
       (tr.rate * 100)::int AS vat_percent,
       img.storage_path AS primary_image_path,
-      pc_primary.code_norm AS primary_code
-    FROM product p
-    LEFT JOIN product_code pc ON pc.product_id::text = p.id::text
-    LEFT JOIN part_code c ON c.id::text = pc.code_id::text
-    LEFT JOIN brand b ON b.id::text = p.brand_id::text
-    LEFT JOIN tax_rate tr ON tr.id::text = p.tax_rate_id::text
+      pc_primary.code AS primary_code
+    FROM hits h
+    JOIN product p ON p.id = h.id AND p.is_active = true
+    LEFT JOIN brand b ON b.id = p.brand_id
+    LEFT JOIN tax_rate tr ON tr.id = p.tax_rate_id
     LEFT JOIN LATERAL (
       SELECT pi.storage_path FROM product_image pi
-      WHERE pi.product_id::text = p.id::text
+      WHERE pi.product_id = p.id
       ORDER BY pi.is_primary DESC, pi.sort_order ASC, pi.created_at ASC
       LIMIT 1
     ) img ON true
     LEFT JOIN LATERAL (
-      SELECT pc2.code_norm FROM product_code j
-      JOIN part_code pc2 ON pc2.id::text = j.code_id::text
-      WHERE j.product_id::text = p.id::text AND j.is_primary = true LIMIT 1
+      SELECT COALESCE(pc2.code_norm, j.code_id) AS code
+      FROM product_code j
+      LEFT JOIN part_code pc2 ON pc2.id::text = j.code_id
+      WHERE j.product_id = p.id AND j.is_primary = true LIMIT 1
     ) pc_primary ON true
-    WHERE p.is_active = true
-      AND (
-        p.sku ILIKE ${qLike}
-        OR p.slug ILIKE ${qLike}
-        OR p.name ILIKE ${qLike}
-        OR c.code_norm = ${qNorm}
-        OR c.code_norm LIKE ${`%${qNorm}%`}
-        OR c.code_raw ILIKE ${qLike}
-      )
     ORDER BY p.name
     LIMIT 20
   `;

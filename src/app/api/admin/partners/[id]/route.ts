@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { ApiError, requireStaff } from "@/lib/auth/api";
+import { decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -39,7 +40,15 @@ export async function GET(req: Request, ctx: Ctx) {
 
     return json({
       ok: true,
-      item: { ...(rows as any[])[0], banks, contacts, addresses },
+      item: {
+        ...(rows as any[])[0],
+        phone: decryptPII((rows as any[])[0].phone) || (rows as any[])[0].phone,
+        tax_id: decryptPII((rows as any[])[0].tax_id) || (rows as any[])[0].tax_id,
+        reg_no: decryptPII((rows as any[])[0].reg_no) || (rows as any[])[0].reg_no,
+        banks,
+        contacts,
+        addresses,
+      },
     });
   } catch (e: any) {
     const status = e instanceof ApiError ? e.status : 500;

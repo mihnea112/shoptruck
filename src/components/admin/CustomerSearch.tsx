@@ -36,6 +36,9 @@ export type CustomerDTO = {
   billing_city?: string;
   billing_zip?: string;
   billing_country?: string;
+
+  // Partner without a linked account yet (account is created on select)
+  partner_id?: string;
 };
 
 interface CustomerSearchProps {
@@ -48,6 +51,9 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [emailFor, setEmailFor] = useState<CustomerDTO | null>(null);
+  const [emailValue, setEmailValue] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDTO | null>(null);
 
   // State pentru formularul de creare noua
@@ -78,7 +84,16 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
       try {
         const res = await fetch(`/api/admin/customers?q=${encodeURIComponent(query)}`);
         const data = await res.json();
-        if (data.ok) setResults(data.items);
+        if (data.ok)
+          setResults(
+            (data.items || []).map((r: any) => ({
+              ...r,
+              kind: String(r.kind || "").toLowerCase() === "company" ? "company" : "individual",
+              vat_id: r.vat_id ?? r.tax_id ?? "",
+              company_name: r.company_name ?? r.legal_name ?? undefined,
+              contact_email: r.contact_email ?? r.email ?? undefined,
+            })),
+          );
       } catch (e) {
         console.error(e);
       } finally {
@@ -91,7 +106,40 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
   }, [query]);
 
   // 2. Selectarea unui client existent
-  function handleSelect(c: CustomerDTO) {
+  async function linkPartner(c: CustomerDTO, email?: string) {
+    try {
+      const res = await fetch(`/api/admin/partners/${c.partner_id}/account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(email ? { email } : {}),
+      });
+      const data = await res.json();
+      if (data.needsEmail) {
+        setEmailFor(c);
+        setEmailValue("");
+        setEmailError("");
+        setShowDropdown(false);
+        return;
+      }
+      if (!res.ok || !data.ok) {
+        if (email) setEmailError(data.error || "Nu am putut salva.");
+        else alert(data.error || "Nu am putut pregăti clientul.");
+        return;
+      }
+      setEmailFor(null);
+      finishSelect({ ...c, id: data.accountId, contact_email: email || c.contact_email });
+    } catch {
+      if (email) setEmailError("Nu am putut salva.");
+      else alert("Nu am putut pregăti clientul.");
+    }
+  }
+
+  async function handleSelect(c: CustomerDTO) {
+    if (!c.id && c.partner_id) return linkPartner(c);
+    finishSelect(c);
+  }
+
+  function finishSelect(c: CustomerDTO) {
     setSelectedCustomer(c);
     setQuery(c.display_name || "");
     setShowDropdown(false);
@@ -188,13 +236,13 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
           {results.length > 0 ? (
             results.map((r) => (
               <button
-                key={r.id}
+                key={r.id ?? r.partner_id}
                 onClick={() => handleSelect(r)}
                 className="block w-full bg-white px-4 py-2 text-left text-sm text-slate-900 hover:bg-slate-50 border-b border-slate-100 last:border-0"
               >
                 <div className="font-semibold text-slate-800">{r.display_name}</div>
                 <div className="text-xs text-slate-500">
-                   {r.kind === 'company' ? `CUI: ${r.vat_id}` : `Tel: ${r.phone || '-'}`}
+                   {r.kind === 'company' ? `CUI: ${r.vat_id || '-'}` : `Tel: ${r.phone || '-'}`}
                 </div>
               </button>
             ))
@@ -217,6 +265,43 @@ export default function CustomerSearch({ onSelect }: CustomerSearchProps) {
       {selectedCustomer && (
         <div className="mt-2 rounded-md bg-green-50 px-3 py-2 text-xs text-green-800 border border-green-200">
           Client selectat: <strong>{selectedCustomer.display_name}</strong>
+        </div>
+      )}
+
+      {/* MODAL EMAIL LIPSA PARTENER */}
+      {emailFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Completează datele clientului</h3>
+            <p className="mb-4 text-sm text-slate-700">
+              <span className="font-semibold">{emailFor.display_name}</span>
+              {emailFor.vat_id ? ` · CUI: ${emailFor.vat_id}` : ""} nu are adresă de email. Este necesară pentru ofertă.
+            </p>
+            <label className="mb-1 block text-xs font-semibold text-slate-800">Email *</label>
+            <input
+              type="email"
+              autoFocus
+              value={emailValue}
+              onChange={(e) => setEmailValue(e.target.value)}
+              placeholder="client@exemplu.ro"
+              className={inputBase}
+            />
+            {emailError && <p className="mt-2 text-sm text-red-600">{emailError}</p>}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setEmailFor(null)}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              >
+                Anulează
+              </button>
+              <button
+                onClick={() => linkPartner(emailFor, emailValue.trim())}
+                className="rounded-lg bg-[#feab1f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e09a1a]"
+              >
+                Salvează și selectează
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

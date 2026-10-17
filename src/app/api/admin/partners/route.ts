@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { ApiError, requireStaff } from "@/lib/auth/api";
+import { decryptPII } from "@/lib/crypto/pii";
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -77,7 +78,54 @@ export async function GET(req: Request) {
       }
     }
 
-    return json({ ok: true, items: rows });
+    const items = (rows as any[]).map((r) => ({
+      ...r,
+      phone: decryptPII(r.phone) || r.phone,
+      tax_id: decryptPII(r.tax_id) || r.tax_id,
+      reg_no: decryptPII(r.reg_no) || r.reg_no,
+    }));
+    // Merge in clients from the `account` table (same source as the offers
+    // customer search) that don't have a partner row yet.
+    let merged: any[] = items;
+    if (!type || type === "CLIENT") {
+      const term = `%${q}%`;
+      const accRows = (await sql`
+        SELECT a.id, a.kind, a.display_name, a.legal_name, a.email, a.phone, a.tax_id, a.reg_no, a.is_vat_payer
+        FROM account a
+        WHERE NOT EXISTS (SELECT 1 FROM partner p WHERE p.account_id = a.id)
+          AND (${q.length < 2}
+            OR a.display_name ILIKE ${term}
+            OR a.legal_name ILIKE ${term}
+            OR a.email ILIKE ${term}
+            OR a.phone ILIKE ${term}
+            OR a.tax_id ILIKE ${term}
+            OR a.reg_no ILIKE ${term})
+        ORDER BY a.display_name NULLS LAST
+        LIMIT ${limit}
+      `) as any[];
+      const seen = new Set(items.map((r: any) => r.tax_id).filter(Boolean));
+      const extra = accRows
+        .map((r) => ({
+          id: r.id,
+          from_account: true,
+          partner_type: "CLIENT",
+          kind: String(r.kind || "").toUpperCase(),
+          display_name: r.display_name || r.legal_name || r.email,
+          legal_name: r.legal_name,
+          email: r.email,
+          phone: decryptPII(r.phone) || r.phone,
+          tax_id: decryptPII(r.tax_id) || r.tax_id,
+          reg_no: decryptPII(r.reg_no) || r.reg_no,
+          is_vat_payer: r.is_vat_payer,
+          credit_limit: 0,
+          credit_days: 0,
+        }))
+        .filter((r) => !r.tax_id || !seen.has(r.tax_id));
+      merged = [...items, ...extra].sort((a, b) =>
+        String(a.display_name || "").localeCompare(String(b.display_name || ""), "ro"),
+      );
+    }
+    return json({ ok: true, items: merged });
   } catch (e: any) {
     const status = e instanceof ApiError ? e.status : 500;
     return json({ ok: false, error: e?.message || "Eroare internă." }, status);

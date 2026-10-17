@@ -591,6 +591,16 @@ export default function NewOfferPage() {
                   {/* FOLOSIM AUTOCOMPLETE AICI */}
                   <ProductAutocomplete
                     onSelect={(p) => handleProductSelect(item.id, p)}
+                    onProductUpdated={(p) =>
+                      // refresh every line that uses the edited product
+                      setItems((list) =>
+                        list.map((i) =>
+                          i.productId === p.id
+                            ? { ...i, name: p.name, price: Number(p.price), basePrice: Number(p.price) }
+                            : i,
+                        ),
+                      )
+                    }
                     placeholder="Caută piesă sau serviciu..."
                   />
                   {/* Dacă e selectat, arătăm un mic text sub input (opțional, dar input-ul din componenta se updateaza deja) */}
