@@ -7,8 +7,19 @@ import {
   StyleSheet,
   Image,
 } from "@react-pdf/renderer";
+import { OFFER_LOGO_DATA_URI } from "./offerLogo";
 
 // - Styles -
+const COMPANY = {
+  name: "SC AUTO-TRUCK SRL",
+  cui: "RO14084923",
+  regCom: "J35/838/2001",
+  address: "Str. Miresei Nr. 12A, Timisoara, Jud. Timis",
+  phone: "0256 244 136",
+  email: "office@autotruck.ro",
+  web: "www.shoptruck.ro",
+};
+
 const styles = StyleSheet.create({
   page: {
     padding: 32,
@@ -17,6 +28,18 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     backgroundColor: "#fff",
   },
+
+  // Company letterhead
+  letterhead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 14,
+  },
+  logo: { width: 160, height: 23 },
+  companyBlock: { alignItems: "flex-end" },
+  companyName: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#0f172a" },
+  companyLine: { fontSize: 8, color: "#475569", marginTop: 1.5 },
 
   // Header
   header: {
@@ -202,7 +225,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#e2e8f0",
     paddingTop: 6,
   },
-  footerText: { fontSize: 7, color: "#94a3b8" },
+  footerText: { fontSize: 7, color: "#475569" },
 });
 
 // - Helpers -
@@ -276,6 +299,22 @@ export default function OfferPDFDocument({ offer }: { offer: any }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* LETTERHEAD */}
+        <View style={styles.letterhead}>
+          <Image src={OFFER_LOGO_DATA_URI} style={styles.logo} />
+          <View style={styles.companyBlock}>
+            <Text style={styles.companyName}>{COMPANY.name}</Text>
+            <Text style={styles.companyLine}>
+              CUI: {COMPANY.cui} | Reg. Com.: {COMPANY.regCom}
+            </Text>
+            <Text style={styles.companyLine}>{COMPANY.address}</Text>
+            <Text style={styles.companyLine}>
+              Tel: {COMPANY.phone} | {COMPANY.email}
+            </Text>
+            <Text style={styles.companyLine}>{COMPANY.web}</Text>
+          </View>
+        </View>
+
         {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.titleBlock}>
@@ -445,6 +484,9 @@ export default function OfferPDFDocument({ offer }: { offer: any }) {
 
         {/* FOOTER */}
         <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>
+            {COMPANY.name} - CUI {COMPANY.cui} - {COMPANY.phone} - {COMPANY.email}
+          </Text>
           <Text style={styles.footerText}>
             Oferta Nr. {docNo} - {today}
           </Text>
