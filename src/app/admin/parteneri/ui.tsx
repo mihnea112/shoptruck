@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { DELIVERY_OPTIONS, PAYMENT_OPTIONS } from "@/lib/partner-options";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -368,7 +369,6 @@ export default function PartnersUI() {
                     <tr key={p.id} className="hover:bg-slate-50 transition">
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-900">{p.display_name}</div>
-                        {p.code && <div className="text-xs text-slate-500">Cod: {p.code}</div>}
                       </td>
                       <td className="px-4 py-3">
                         <Badge label={TYPE_LABELS[p.partner_type] || p.partner_type} color={TYPE_COLORS[p.partner_type] || "bg-slate-50 text-slate-600 border-slate-200"} />
@@ -557,6 +557,28 @@ function Field({ label, value, onChange, type = "text", placeholder, className }
   );
 }
 
+function SelectField({ label, value, onChange, options, emptyLabel }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]; emptyLabel: string;
+}) {
+  // keep a legacy free-text value selectable so saving doesn't silently erase it
+  const all = value && !options.includes(value) ? [value, ...options] : options;
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold text-slate-700">{label}</label>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#feab1f] focus:outline-none"
+      >
+        <option value="">{emptyLabel}</option>
+        {all.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 /* ── Partner Form Modal ────────────────────────────────── */
 
 function PartnerFormModal({
@@ -572,6 +594,22 @@ function PartnerFormModal({
   const [section, setSection] = useState<"general" | "address" | "commercial" | "banks" | "contacts">("general");
   const f = (key: string) => form[key] ?? "";
   const set = (key: string, val: any) => setForm({ ...form, [key]: val });
+
+  const [agentOptions, setAgentOptions] = useState<string[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/sales-reps");
+        const data = await res.json();
+        if (!data.ok) return;
+        const names = (data.items || [])
+          .filter((u: any) => u.is_active && (u.roles || []).some((r: string) => ["SALES", "SALES_REP"].includes(String(r).toUpperCase())))
+          .map((u: any) => u.full_name || u.email)
+          .filter(Boolean);
+        setAgentOptions(Array.from(new Set<string>(names)));
+      } catch { /* silent */ }
+    })();
+  }, []);
 
   const sections = [
     { key: "general", label: "General" },
@@ -630,10 +668,7 @@ function PartnerFormModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <Field label="Nume partener *" value={f("display_name")} onChange={(v) => set("display_name", v)} className="col-span-2" />
-                <Field label="Cod intern" value={f("code")} onChange={(v) => set("code", v)} placeholder="ex: AUT" />
-              </div>
+              <Field label="Nume partener *" value={f("display_name")} onChange={(v) => set("display_name", v)} />
 
               <Field label="Denumire legală" value={f("legal_name")} onChange={(v) => set("legal_name", v)} />
 
@@ -657,20 +692,19 @@ function PartnerFormModal({
                 </label>
               </div>
 
-              {form.is_vat_payer && (
-                <Field label="Plătitor TVA din data" value={f("vat_since")} onChange={(v) => set("vat_since", v)} type="date" />
-              )}
-
-              <Field label="Agent" value={f("agent_name")} onChange={(v) => set("agent_name", v)} placeholder="ex: Calancea Florin" />
+              <SelectField
+                label="Agent"
+                value={f("agent_name")}
+                onChange={(v) => set("agent_name", v)}
+                emptyLabel="— Fără agent —"
+                options={agentOptions}
+              />
 
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Email" value={f("email")} onChange={(v) => set("email", v)} type="email" />
                 <Field label="Telefon" value={f("phone")} onChange={(v) => set("phone", v)} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Website" value={f("website")} onChange={(v) => set("website", v)} placeholder="www.example.ro" />
-                <Field label="Telefon SMS" value={f("sms_phone")} onChange={(v) => set("sms_phone", v)} />
-              </div>
+              <Field label="Website" value={f("website")} onChange={(v) => set("website", v)} placeholder="www.example.ro" />
             </div>
           )}
 
@@ -682,10 +716,7 @@ function PartnerFormModal({
                 <Field label="Județ" value={f("county")} onChange={(v) => set("county", v)} placeholder="ex: TIMIS" />
                 <Field label="Localitate" value={f("city")} onChange={(v) => set("city", v)} placeholder="ex: Timisoara" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Zona" value={f("zone")} onChange={(v) => set("zone", v)} placeholder="ex: Aradului" />
-                <Field label="Cod poștal" value={f("postal_code")} onChange={(v) => set("postal_code", v)} placeholder="300642" />
-              </div>
+              <Field label="Cod poștal" value={f("postal_code")} onChange={(v) => set("postal_code", v)} placeholder="300642" />
               <div className="grid grid-cols-4 gap-4">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-700">Tip stradă</label>
@@ -712,7 +743,13 @@ function PartnerFormModal({
               </div>
               <Field label="Alte detalii adresă" value={f("address_details")} onChange={(v) => set("address_details", v)} placeholder="Timisoara, Str.Miresei, Nr.12A" />
 
-              <Field label="Mod livrare" value={f("delivery_method")} onChange={(v) => set("delivery_method", v)} placeholder="ex: Livrare cu masina ATR" />
+              <SelectField
+                label="Mod livrare implicit"
+                value={f("delivery_method")}
+                onChange={(v) => set("delivery_method", v)}
+                emptyLabel="— Nesetat —"
+                options={DELIVERY_OPTIONS}
+              />
             </div>
           )}
 
@@ -725,7 +762,13 @@ function PartnerFormModal({
                 <Field label="Credit maxim (lei)" value={String(f("credit_limit") || 0)} onChange={(v) => set("credit_limit", Number(v) || 0)} type="number" />
               </div>
 
-              <Field label="Mod plată" value={f("payment_method")} onChange={(v) => set("payment_method", v)} placeholder="ex: SE ACHITA CU OP" />
+              <SelectField
+                label="Mod plată implicit"
+                value={f("payment_method")}
+                onChange={(v) => set("payment_method", v)}
+                emptyLabel="— Nesetat —"
+                options={PAYMENT_OPTIONS}
+              />
 
               <div className="flex flex-wrap gap-6">
                 <label className="flex items-center gap-2 text-sm text-slate-700">

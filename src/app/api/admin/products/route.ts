@@ -220,7 +220,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let me: any = null;
   try {
-    me = await requireAdmin(req);
+    // sales staff can add products from the offer form
+    me = await requireStaff(req, ["admin", "sales", "sales_rep"]);
     debugLog("api/admin/products POST auth ok", { user_id: me?.userId });
   } catch (e: any) {
     debugLog("api/admin/products POST auth failed", { error: pickPgError(e), stack: e?.stack });

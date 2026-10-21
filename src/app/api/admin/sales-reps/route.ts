@@ -1,7 +1,7 @@
 // src/app/api/admin/sales-reps/route.ts
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth/api";
+import { requireAdmin, requireStaff } from "@/lib/auth/api";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 function json(data: any, status = 200) {
@@ -14,7 +14,8 @@ function json(data: any, status = 200) {
 // GET — list all staff profiles
 export async function GET(req: Request) {
   try {
-    await requireAdmin(req);
+    // sales staff need the list too (agent picker on the partners form)
+    await requireStaff(req, ["admin", "sales"]);
 
     const rows = await sql`
       SELECT

@@ -5,21 +5,10 @@ import { pdf } from "@react-pdf/renderer";
 import { saveAs } from "file-saver";
 import InvoicePdfDocument from "./InvoicePdfDocument";
 
+import { DELIVERY_OPTIONS, PAYMENT_OPTIONS } from "@/lib/partner-options";
+
 const inputCls =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#feab1f] focus:ring-1 focus:ring-[#feab1f]";
-
-const DELIVERY_OPTIONS = [
-  "Ridicare personala din depozit",
-  "Livrare prin curier",
-  "Transport propriu",
-];
-
-const PAYMENT_OPTIONS = [
-  "OP",
-  "NUMERAR",
-  "CARD BANCAR",
-  "PLATA LA LIVRARE",
-];
 
 export default function InvoiceGenerateButton({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);

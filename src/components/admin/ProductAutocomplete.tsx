@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import ProductCreateModal from "./ProductCreateModal";
 
 export type ProductDTO = {
   id: string;
@@ -299,6 +300,7 @@ export default function ProductAutocomplete({
   const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<ProductDTO | null>(null);
   const [hoveredItemRect, setHoveredItemRect] = useState<DOMRect | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
@@ -475,8 +477,18 @@ export default function ProductAutocomplete({
               {error}
             </div>
           ) : items.length === 0 && !loading ? (
-            <div className="px-4 py-3 text-xs text-slate-400">
-              Nu am găsit produse pentru &ldquo;{q}&rdquo;.
+            <div className="flex items-center justify-between gap-3 px-4 py-3 text-xs text-slate-700">
+              <span>Nu am găsit produse pentru &ldquo;{q}&rdquo;.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setShowNew(true);
+                }}
+                className="flex-shrink-0 rounded-full bg-[#feab1f] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#e09800]"
+              >
+                + Adaugă produs nou
+              </button>
             </div>
           ) : (
             <ul className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
@@ -565,6 +577,17 @@ export default function ProductAutocomplete({
             </ul>
           )}
         </div>
+      )}
+
+      {showNew && (
+        <ProductCreateModal
+          initialName={q.trim()}
+          onClose={() => setShowNew(false)}
+          onCreated={(p) => {
+            setShowNew(false);
+            pick(p);
+          }}
+        />
       )}
 
       {/* Popup modal on hover */}
