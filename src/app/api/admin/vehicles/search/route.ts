@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
           series: v.series,
           engine_code: v.engine_code,
           year: v.year,
-          build_date: v.build_date,
+          build_date: v.build_date ?? (v.year ? `${v.year}-01-01` : null),
           engine_capacity: v.engine_capacity,
           engine_power_kw: v.engine_power_kw,
 

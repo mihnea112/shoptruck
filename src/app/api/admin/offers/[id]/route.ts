@@ -135,7 +135,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             series: offer.series ?? "",
             engine_code: offer.engine_code ?? "",
             year: offer.year ?? new Date().getFullYear(),
-            build_date: offer.build_date ?? "",
+            build_date: offer.build_date ?? (offer.year ? `${offer.year}-01-01` : ""),
             engine_capacity: offer.engine_capacity ?? "",
             engine_power_kw: offer.engine_power_kw ?? "",
             // Legacy aliases (so older UI still works)
