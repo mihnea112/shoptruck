@@ -581,7 +581,7 @@ export default function ProductAutocomplete({
 
       {showNew && (
         <ProductCreateModal
-          initialName={q.trim()}
+          initialCode={q.trim()}
           onClose={() => setShowNew(false)}
           onCreated={(p) => {
             setShowNew(false);

@@ -928,11 +928,12 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           </div>
         ) : null}
 
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs xl:text-sm">
           <thead className="bg-slate-50">
             <tr>
               {isAdmin ? (
-                <th className="px-4 py-3 font-semibold text-slate-700 w-10">
+                <th className="px-2.5 py-2.5 font-semibold text-slate-700 w-10">
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
@@ -944,24 +945,24 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 </th>
               ) : null}
 
-              <th className="px-4 py-3 font-semibold text-slate-700">Produs</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">SKU</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Brand</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">Produs</th>
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">SKU</th>
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">Brand</th>
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">
                 Creat de
               </th>
-              <th className="px-4 py-3 font-semibold text-slate-700">
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">
                 Pret Achiziție
               </th>
-              <th className="px-4 py-3 font-semibold text-slate-700">
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">
                 Marjă (%)
               </th>
-              <th className="px-4 py-3 font-semibold text-slate-700">
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">
                 Preț (cu TVA)
               </th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Stoc</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">Activ</th>
-              <th className="px-4 py-3 font-semibold text-slate-700">
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">Stoc</th>
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">Activ</th>
+              <th className="px-2.5 py-2.5 font-semibold text-slate-700">
                 Acțiuni
               </th>
             </tr>
@@ -970,7 +971,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
             {items.length === 0 ? (
               <tr>
                 <td
-                  className="px-4 py-4 text-slate-600"
+                  className="px-2.5 py-4 text-slate-600"
                   colSpan={isAdmin ? 11 : 10}
                 >
                   Nu există produse.
@@ -1003,7 +1004,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                 return (
                   <tr key={p.id} className="border-t border-slate-200">
                     {isAdmin ? (
-                      <td className="px-4 py-3">
+                      <td className="px-2.5 py-2.5">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -1022,47 +1023,47 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                       </td>
                     ) : null}
 
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">
+                    <td className="px-2.5 py-2.5 min-w-[180px] max-w-[320px]">
+                      <div className="font-semibold text-slate-900 break-words">
                         {p.name}
                       </div>
                       <div className="text-xs text-slate-500">{p.slug}</div>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{p.sku}</td>
-                    <td className="px-4 py-3 text-slate-700">{brandName}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">{p.sku}</td>
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">{brandName}</td>
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">
                       {p.created_by_name || p.created_by_email || "—"}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">
                       {Number(p.buy_price_net || 0).toFixed(2)} lei
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">
                       {Number(p.profit_margin_pct || 0).toFixed(2)}%
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">
                       {gross == null ? "—" : `${gross} lei`}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">
                       <div className="font-semibold text-slate-900">{available.toFixed(3)}</div>
                       <div className="text-[11px] text-slate-500">
                         în stoc: {onHand.toFixed(3)} · rezervat: {reserved.toFixed(3)}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2.5 py-2.5 text-slate-700 whitespace-nowrap">
                       {p.is_active ? "Da" : "Nu"}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <button
                           onClick={() => openEdit(p.id)}
-                          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                          className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
                         >
                           Deschide
                         </button>
                         {isAdmin && (
                           <button
                             onClick={() => remove(p.id)}
-                            className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition"
+                            className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 transition"
                           >
                             Șterge
                           </button>
@@ -1075,6 +1076,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {modalOpen ? (

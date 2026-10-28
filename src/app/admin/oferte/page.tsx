@@ -447,10 +447,15 @@ export default function OffersListPage() {
               (offers ?? []).map((o) => (
                 <tr key={o.id} className="hover:bg-slate-50 transition">
                   <td className="px-4 py-3 font-medium text-slate-900">
-                    {o?.account?.name ??
-                      o?.customer?.display_name ??
-                      o?.account_display_name ??
-                      "—"}
+                    <Link
+                      href={`/admin/oferte/${o.id}`}
+                      className="hover:text-blue-600 hover:underline"
+                    >
+                      {o?.account?.name ??
+                        o?.customer?.display_name ??
+                        o?.account_display_name ??
+                        "—"}
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-slate-600 font-mono text-xs">
                     {o?.vehicle?.label ?? o?.vehicle?.plate_no ?? "—"}

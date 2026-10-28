@@ -119,6 +119,9 @@ type VehicleState = {
   series: string;
   engine_code: string;
   year: number;
+  build_date: string;
+  engine_capacity: string | number;
+  engine_power_kw: string | number;
 };
 
 export default function EditOfferPage({
@@ -142,6 +145,9 @@ export default function EditOfferPage({
     series: "",
     engine_code: "",
     year: new Date().getFullYear(),
+    build_date: "",
+    engine_capacity: "",
+    engine_power_kw: "",
   });
 
   const [items, setItems] = useState<OfferItemUI[]>([]);
@@ -177,6 +183,9 @@ export default function EditOfferPage({
             series: d.vehicle.series || "",
             engine_code: d.vehicle.engine_code || "",
             year: d.vehicle.year || new Date().getFullYear(),
+            build_date: d.vehicle.build_date || "",
+            engine_capacity: d.vehicle.engine_capacity ?? "",
+            engine_power_kw: d.vehicle.engine_power_kw ?? "",
           });
         }
 
@@ -197,7 +206,7 @@ export default function EditOfferPage({
               basePrice: Number(it.price ?? it.unit_price_net ?? 0),
               priceDraft: Number(it.price ?? it.unit_price_net ?? 0).toFixed(2),
               priceError: null,
-              tax: Number(it.tax ?? (it.tax_rate != null ? (it.tax_rate <= 1 ? it.tax_rate * 100 : it.tax_rate) : 19)),
+              tax: Number(it.tax ?? (it.tax_rate != null ? (it.tax_rate <= 1 ? it.tax_rate * 100 : it.tax_rate) : 21)),
             })),
           );
         }
@@ -220,14 +229,16 @@ export default function EditOfferPage({
     0,
   );
 
-  const totalTax = items.reduce(
+  const rawTax = items.reduce(
     (acc, i) =>
       acc +
       Number(i.qty || 0) * Number(i.price || 0) * (Number(i.tax || 0) / 100),
     0,
   );
 
-  const totalGross = totalNet + totalTax;
+  // total with VAT is rounded up to whole lei (same as product price in the create modal)
+  const totalGross = Math.ceil(totalNet + (includeVat ? rawTax : 0) - 1e-9);
+  const totalTax = totalGross - totalNet;
 
   // ACTIUNI TABEL
   const addItem = () =>
@@ -242,7 +253,7 @@ export default function EditOfferPage({
         basePrice: undefined,
         priceDraft: "0.00",
         priceError: null,
-        tax: 19,
+        tax: 21,
       },
     ]);
 
@@ -541,16 +552,19 @@ export default function EditOfferPage({
 
             <div className="col-span-1">
               <input
-                type="number"
+                type="date"
                 className={inputBase}
-                value={vehicle.year}
+                value={vehicle.build_date || ""}
                 onChange={(e) =>
                   setVehicle({
                     ...vehicle,
-                    year: Number(e.target.value || new Date().getFullYear()),
+                    build_date: e.target.value,
+                    year: e.target.value
+                      ? Number(e.target.value.slice(0, 4))
+                      : vehicle.year,
                   })
                 }
-                placeholder="An"
+                title="Data fabricației"
               />
             </div>
 
@@ -592,7 +606,7 @@ export default function EditOfferPage({
                     series: e.target.value,
                   })
                 }
-                placeholder="Serie / versiune (series)"
+                placeholder="Serie motor (series)"
               />
             </div>
 
@@ -606,7 +620,31 @@ export default function EditOfferPage({
                     engine_code: e.target.value,
                   })
                 }
-                placeholder="Cod motor (engine_code)"
+                placeholder="Tip motor (engine_code)"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <input
+                type="number"
+                className={inputBase}
+                value={vehicle.engine_capacity}
+                onChange={(e) =>
+                  setVehicle({ ...vehicle, engine_capacity: e.target.value })
+                }
+                placeholder="Capacitate cilindrică (cmc)"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <input
+                type="number"
+                className={inputBase}
+                value={vehicle.engine_power_kw}
+                onChange={(e) =>
+                  setVehicle({ ...vehicle, engine_power_kw: e.target.value })
+                }
+                placeholder="Putere (KW)"
               />
             </div>
           </div>
@@ -634,8 +672,9 @@ export default function EditOfferPage({
               const rowQty = Number(item.qty) || 0;
               const rowPrice = Number(item.price) || 0;
               const rowTax = Number(item.tax) || 0;
-              const rowTotal =
-                rowQty * rowPrice * (includeVat ? 1 + rowTax / 100 : 1);
+              const rowTotal = Math.ceil(
+                rowQty * rowPrice * (includeVat ? 1 + rowTax / 100 : 1) - 1e-9,
+              );
 
               return (
                 <tr

@@ -47,17 +47,17 @@ function formatPct(rate: string | number) {
 }
 
 export default function ProductCreateModal({
-  initialName,
+  initialCode,
   onCreated,
   onClose,
 }: {
-  initialName: string;
+  initialCode: string;
   onCreated: (p: ProductDTO) => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(initialName);
-  const [slug, setSlug] = useState(slugify(initialName));
-  const [sku, setSku] = useState("");
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [sku, setSku] = useState(initialCode);
   const [buyPriceNet, setBuyPriceNet] = useState("");
   const [marginPct, setMarginPct] = useState("");
   const [taxRateId, setTaxRateId] = useState("");
@@ -65,11 +65,11 @@ export default function ProductCreateModal({
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
   const [isActive, setIsActive] = useState(true);
-  const [primaryCode, setPrimaryCode] = useState("");
+  const [primaryCode, setPrimaryCode] = useState(initialCode);
   const [equivCodes, setEquivCodes] = useState<string[]>([]);
   const [newEquiv, setNewEquiv] = useState("");
   const [uom, setUom] = useState("buc");
-  const [stock, setStock] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
@@ -89,7 +89,12 @@ export default function ProductCreateModal({
           .slice()
           .sort((a: TaxRate, b: TaxRate) => Number(b.rate) - Number(a.rate));
         setTaxRates(rates);
-        if (rates[0]) setTaxRateId(rates[0].id);
+        const def21 = rates.find((r) => {
+          const n = Number(r.rate);
+          return Math.round(n <= 1 ? n * 100 : n) === 21;
+        });
+        const def = def21 ?? rates[0];
+        if (def) setTaxRateId(def.id);
         setBrands((b.items || []).slice().sort((x: Option, y: Option) => x.name.localeCompare(y.name)));
         setCats((c.items || []).slice().sort((x: Option, y: Option) => x.name.localeCompare(y.name)));
       } catch {
@@ -125,7 +130,6 @@ export default function ProductCreateModal({
     setError(null);
     const buy = safeNum(buyPriceNet);
     const mar = safeNum(marginPct);
-    const stockN = safeNum(stock);
 
     if (sku.trim().length < 2) return setError("SKU invalid.");
     if (name.trim().length < 2) return setError("Numele este obligatoriu.");
@@ -134,8 +138,7 @@ export default function ProductCreateModal({
     if (!categoryId) return setError("Selectează categorie.");
     if (buy == null || buy < 0) return setError("Preț achiziție (fără TVA) invalid.");
     if (mar == null || mar < 0) return setError("Marjă (%) invalidă.");
-    if (stockN == null || stockN < 0) return setError("Stoc (disponibil) invalid.");
-    if (!primaryCode.trim()) return setError("Cod principal obligatoriu.");
+    if (!primaryCode.trim()) return setError("Cod piesă obligatoriu.");
 
     setSaving(true);
     try {
@@ -154,13 +157,41 @@ export default function ProductCreateModal({
           brand_id: brandId || null,
           category_id: categoryId,
           uom: uom.trim() || "buc",
-          stock_on_hand: stockN,
+          stock_on_hand: 0,
           primary_code: primaryCode.trim(),
           equivalent_codes: equivCodes,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Eroare la salvare.");
+
+      let imagePath: string | null = null;
+      if (imageFile) {
+        try {
+          const ext = (imageFile.name.split(".").pop() || "jpg").toLowerCase();
+          const up = await fetch(`/api/admin/products/${data.id}/images/upload-url`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ext }),
+          }).then((r) => r.json());
+          if (!up?.ok) throw new Error(up?.error || "Upload eșuat.");
+          const put = await fetch(up.signedUrl, {
+            method: "PUT",
+            headers: { "content-type": imageFile.type || "application/octet-stream" },
+            body: imageFile,
+          });
+          if (!put.ok) throw new Error(`Upload eșuat (${put.status}).`);
+          const reg = await fetch(`/api/admin/products/${data.id}/images`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ storage_path: up.path, alt: null, sort_order: 0, is_primary: true }),
+          }).then((r) => r.json());
+          if (!reg?.ok) throw new Error(reg?.error || "Imaginea nu a putut fi salvată.");
+          imagePath = up.path;
+        } catch (err: any) {
+          alert(`Produsul a fost creat, dar imaginea nu s-a încărcat: ${err?.message || err}`);
+        }
+      }
 
       onCreated({
         id: String(data.id),
@@ -169,11 +200,11 @@ export default function ProductCreateModal({
         slug: slug.trim(),
         brand_name: brands.find((b) => b.id === brandId)?.name ?? null,
         primary_code: primaryCode.trim(),
-        primary_image_path: null,
+        primary_image_path: imagePath,
         // same formula as the product search: CEILING(buy * (1+margin) , 2 decimals)
         price: Math.ceil(buy * (1 + mar / 100) * 100) / 100,
         vat_percent: Math.round((selectedTax ?? 0) * 100),
-        stock_available: stockN,
+        stock_available: 0,
         uom: uom.trim() || "buc",
       });
     } catch (e: any) {
@@ -293,8 +324,13 @@ export default function ProductCreateModal({
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <label className={labelCls}>Cod principal (Piesa)</label>
-              <input value={primaryCode} onChange={(e) => setPrimaryCode(e.target.value)} placeholder="ex: 1K0 615 301" className={inputBase} />
+              <label className={labelCls}>Cod piesă</label>
+              <input value={primaryCode} onChange={(e) => {
+                const v = e.target.value;
+                // SKU follows cod piesă until edited manually
+                if (sku === primaryCode) setSku(v);
+                setPrimaryCode(v);
+              }} placeholder="ex: 1K0 615 301" className={inputBase} />
             </div>
 
             <div className="space-y-2">
@@ -339,20 +375,27 @@ export default function ProductCreateModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className={labelCls}>UM</label>
-                <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
-              </div>
-              <div className="space-y-1">
-                <label className={labelCls}>Stoc disponibil</label>
-                <input value={stock} onChange={(e) => setStock(e.target.value)} inputMode="decimal" placeholder="ex: 0" className={inputBase} />
-              </div>
+            <div className="space-y-1">
+              <label className={labelCls}>UM</label>
+              <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
             </div>
 
-            <p className="text-xs text-slate-700">
-              Imaginile se adaugă ulterior din Produse, după salvare.
-            </p>
+            <div className="space-y-1">
+              <label className={labelCls}>Imagine</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-xs text-slate-800 file:mr-3 file:rounded-full file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+              />
+              {imageFile && (
+                <img
+                  src={URL.createObjectURL(imageFile)}
+                  alt="Previzualizare"
+                  className="mt-2 h-28 rounded-lg border border-slate-200 object-contain"
+                />
+              )}
+            </div>
           </div>
         </div>
 

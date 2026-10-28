@@ -56,7 +56,10 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         v.series,
         v.chassis_vin,
         v.engine_code,
-        v.year
+        v.year,
+        v.build_date::text AS build_date,
+        v.engine_capacity,
+        v.engine_power_kw
       FROM offer o
       JOIN account a ON a.id = o.account_id
       LEFT JOIN vehicle v ON v.id = o.vehicle_id
@@ -132,6 +135,9 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             series: offer.series ?? "",
             engine_code: offer.engine_code ?? "",
             year: offer.year ?? new Date().getFullYear(),
+            build_date: offer.build_date ?? "",
+            engine_capacity: offer.engine_capacity ?? "",
+            engine_power_kw: offer.engine_power_kw ?? "",
             // Legacy aliases (so older UI still works)
             vin: offer.chassis_vin ?? "",
             plate_number: offer.plate_no ?? "",
@@ -296,7 +302,9 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       };
     });
 
-    const totalGross = totalNet + totalTax;
+    // rounded up to whole lei, like product prices in the create modal
+    const totalGross = Math.ceil(totalNet + totalTax - 1e-9);
+    totalTax = totalGross - totalNet;
     const safeValidUntil = validUntil
       ? new Date(validUntil).toISOString()
       : null;
@@ -341,9 +349,21 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
       const engineCode = vehicle?.engine_code
         ? String(vehicle.engine_code).trim()
         : null;
-      const year =
-        vehicle?.year != null && vehicle.year !== ""
+      const buildDate = vehicle?.build_date
+        ? String(vehicle.build_date).slice(0, 10)
+        : null;
+      const year = buildDate
+        ? Number(buildDate.slice(0, 4))
+        : vehicle?.year != null && vehicle.year !== ""
           ? Number(vehicle.year)
+          : null;
+      const engineCapacity =
+        vehicle?.engine_capacity != null && vehicle.engine_capacity !== ""
+          ? Number(vehicle.engine_capacity)
+          : null;
+      const enginePowerKw =
+        vehicle?.engine_power_kw != null && vehicle.engine_power_kw !== ""
+          ? Number(vehicle.engine_power_kw)
           : null;
 
       if (vin || plateNo) {
@@ -374,13 +394,17 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
               chassis_vin = COALESCE(${vin || null}, chassis_vin),
               engine_code = COALESCE(${engineCode}, engine_code),
               year = COALESCE(${year}, year),
+              build_date = COALESCE(${buildDate}::date, build_date),
+              engine_capacity = COALESCE(${engineCapacity}, engine_capacity),
+              engine_power_kw = COALESCE(${enginePowerKw}, engine_power_kw),
               updated_at = now()
             WHERE id = ${finalVehicleId}::uuid
           `;
         } else {
           const inserted = await q`
             INSERT INTO vehicle (
-              account_id, make, model, series, chassis_vin, engine_code, year, plate_no
+              account_id, make, model, series, chassis_vin, engine_code, year, plate_no,
+              build_date, engine_capacity, engine_power_kw
             )
             VALUES (
               ${accountId}::uuid,
@@ -390,7 +414,10 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
               ${vin || null},
               ${engineCode},
               ${year},
-              ${plateNo}
+              ${plateNo},
+              ${buildDate}::date,
+              ${engineCapacity},
+              ${enginePowerKw}
             )
             RETURNING id
           `;

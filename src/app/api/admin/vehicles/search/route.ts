@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
         model,
         series,
         engine_code,
-        year
+        year,
+        build_date::text AS build_date,
+        engine_capacity,
+        engine_power_kw
       FROM vehicle
       WHERE chassis_vin ILIKE ${term} OR plate_no ILIKE ${term}
       LIMIT 1
@@ -44,6 +47,9 @@ export async function GET(req: NextRequest) {
           series: v.series,
           engine_code: v.engine_code,
           year: v.year,
+          build_date: v.build_date,
+          engine_capacity: v.engine_capacity,
+          engine_power_kw: v.engine_power_kw,
 
           // Legacy aliases (temporary)
           vin: v.chassis_vin,

@@ -208,7 +208,12 @@ export async function POST(req: NextRequest) {
   const model = vehicle?.model ? String(vehicle.model).trim() : null;
   const series = vehicle?.series ? String(vehicle.series).trim() : null;
   const engineCode = vehicle?.engine_code ? String(vehicle.engine_code).trim() : null;
-  const year = vehicle?.year != null && vehicle.year !== "" ? Number(vehicle.year) : null;
+  const buildDate = vehicle?.build_date ? String(vehicle.build_date).slice(0, 10) : null;
+  const year = buildDate
+    ? Number(buildDate.slice(0, 4))
+    : vehicle?.year != null && vehicle.year !== "" ? Number(vehicle.year) : null;
+  const engineCapacity = vehicle?.engine_capacity != null && vehicle.engine_capacity !== "" ? Number(vehicle.engine_capacity) : null;
+  const enginePowerKw = vehicle?.engine_power_kw != null && vehicle.engine_power_kw !== "" ? Number(vehicle.engine_power_kw) : null;
 
   if (vin) {
     const existingV = await sql`
@@ -232,12 +237,15 @@ export async function POST(req: NextRequest) {
           series = COALESCE(${series}, series),
           engine_code = COALESCE(${engineCode}, engine_code),
           year = COALESCE(${year}, year),
+          build_date = COALESCE(${buildDate}::date, build_date),
+          engine_capacity = COALESCE(${engineCapacity}, engine_capacity),
+          engine_power_kw = COALESCE(${enginePowerKw}, engine_power_kw),
           updated_at = now()
         WHERE id = ${vehicleId}::uuid
       `;
     } else {
       const inserted = await sql`
-        INSERT INTO vehicle (account_id, make, model, series, chassis_vin, engine_code, year, plate_no)
+        INSERT INTO vehicle (account_id, make, model, series, chassis_vin, engine_code, year, plate_no, build_date, engine_capacity, engine_power_kw)
         VALUES (
           ${accountId}::uuid,
           ${make ?? ""},
@@ -246,7 +254,10 @@ export async function POST(req: NextRequest) {
           ${vin},
           ${engineCode},
           ${year},
-          ${plateNo}
+          ${plateNo},
+          ${buildDate}::date,
+          ${engineCapacity},
+          ${enginePowerKw}
         )
         RETURNING id
       `;
@@ -292,7 +303,9 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const totalGross = totalNet + totalTax;
+  // rounded up to whole lei, like product prices in the create modal
+  const totalGross = Math.ceil(totalNet + totalTax - 1e-9);
+  totalTax = totalGross - totalNet;
 
   // C) Insert offer header + lines
   try {

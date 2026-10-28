@@ -49,7 +49,7 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 50), 1), 200);
+    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 50), 1), 1000);
     const offset = Math.max(Number(searchParams.get("offset") || 0), 0);
 
     dbg(`[api/admin/brands][GET][${reqId}] params`, { q, limit, offset });

@@ -148,11 +148,14 @@ export default function NewOfferPage() {
     series: "",
     engine_code: "",
     year: new Date().getFullYear(),
+    build_date: "",
+    engine_capacity: "",
+    engine_power_kw: "",
   });
 
   // Rândul inițial
   const [items, setItems] = useState<OfferItemUI[]>([
-    { id: Date.now(), name: "", qty: 1, price: 0, tax: 19 }, // Tax default 19, dar va fi suprascris de produs
+    { id: Date.now(), name: "", qty: 1, price: 0, tax: 21 }, // Tax default 21, dar va fi suprascris de produs
   ]);
   const [priceErrors, setPriceErrors] = useState<Record<number, string | null>>(
     {},
@@ -200,6 +203,9 @@ export default function NewOfferPage() {
             series: String(series || ""),
             engine_code: String(engine_code || ""),
             year: Number.isFinite(year) ? year : prev.year,
+            build_date: String(v.build_date ?? prev.build_date ?? "").slice(0, 10),
+            engine_capacity: String(v.engine_capacity ?? prev.engine_capacity ?? ""),
+            engine_power_kw: String(v.engine_power_kw ?? prev.engine_power_kw ?? ""),
           };
         });
       }
@@ -258,15 +264,17 @@ export default function NewOfferPage() {
 
   // --- CALCULE ---
   const totalNet = items.reduce((acc, i) => acc + i.qty * i.price, 0);
-  const totalTax = vatEnabled
+  const rawTax = vatEnabled
     ? items.reduce((acc, i) => acc + i.qty * i.price * (i.tax / 100), 0)
     : 0;
-  const totalGross = totalNet + totalTax;
+  // total with VAT is rounded up to whole lei (same as product price in the create modal)
+  const totalGross = Math.ceil(totalNet + rawTax - 1e-9);
+  const totalTax = totalGross - totalNet;
 
   // --- ACTIUNI TABEL ---
   const addItem = () => {
     const newId = Date.now();
-    setItems([...items, { id: newId, name: "", qty: 1, price: 0, tax: 19 }]);
+    setItems([...items, { id: newId, name: "", qty: 1, price: 0, tax: 21 }]);
     setPriceErrors((prev) => ({ ...prev, [newId]: null }));
   };
 
@@ -488,14 +496,20 @@ export default function NewOfferPage() {
 
             <div className="col-span-1">
               <label className="mb-1 block text-xs font-semibold text-slate-500">
-                An
+                Data fabricației
               </label>
               <input
-                type="number"
+                type="date"
                 className={inputBase}
-                value={vehicle.year}
+                value={vehicle.build_date}
                 onChange={(e) =>
-                  setVehicle({ ...vehicle, year: Number(e.target.value) })
+                  setVehicle({
+                    ...vehicle,
+                    build_date: e.target.value,
+                    year: e.target.value
+                      ? Number(e.target.value.slice(0, 4))
+                      : vehicle.year,
+                  })
                 }
               />
             </div>
@@ -530,7 +544,7 @@ export default function NewOfferPage() {
 
             <div className="col-span-1">
               <label className="mb-1 block text-xs font-semibold text-slate-500">
-                Serie (opțional)
+                Serie motor (opțional)
               </label>
               <input
                 type="text"
@@ -544,7 +558,7 @@ export default function NewOfferPage() {
 
             <div className="col-span-1">
               <label className="mb-1 block text-xs font-semibold text-slate-500">
-                Cod motor (opțional)
+                Tip motor (opțional)
               </label>
               <input
                 type="text"
@@ -555,6 +569,34 @@ export default function NewOfferPage() {
                     ...vehicle,
                     engine_code: e.target.value.toUpperCase(),
                   })
+                }
+              />
+            </div>
+
+            <div className="col-span-1">
+              <label className="mb-1 block text-xs font-semibold text-slate-500">
+                Capacitate cilindrică (cmc)
+              </label>
+              <input
+                type="number"
+                className={inputBase}
+                value={vehicle.engine_capacity}
+                onChange={(e) =>
+                  setVehicle({ ...vehicle, engine_capacity: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="col-span-1">
+              <label className="mb-1 block text-xs font-semibold text-slate-500">
+                Putere (KW)
+              </label>
+              <input
+                type="number"
+                className={inputBase}
+                value={vehicle.engine_power_kw}
+                onChange={(e) =>
+                  setVehicle({ ...vehicle, engine_power_kw: e.target.value })
                 }
               />
             </div>
@@ -674,10 +716,11 @@ export default function NewOfferPage() {
                 </td>
 
                 <td className="px-4 py-2 text-right font-semibold text-slate-900 border-t border-slate-200">
-                  {(
+                  {Math.ceil(
                     item.qty *
-                    item.price *
-                    (1 + (vatEnabled ? item.tax : 0) / 100)
+                      item.price *
+                      (1 + (vatEnabled ? item.tax : 0) / 100) -
+                      1e-9,
                   ).toFixed(2)}
                 </td>
 

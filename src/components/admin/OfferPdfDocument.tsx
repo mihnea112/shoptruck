@@ -368,7 +368,22 @@ export default function OfferPDFDocument({ offer }: { offer: any }) {
             {veh?.engine_code && (
               <Text style={styles.infoMuted}>Motor: {veh.engine_code}</Text>
             )}
-            {veh?.year && <Text style={styles.infoMuted}>An: {veh.year}</Text>}
+            {(veh?.build_date || veh?.year) && (
+              <Text style={styles.infoMuted}>
+                Data fabricației:{" "}
+                {veh?.build_date
+                  ? String(veh.build_date).slice(0, 10).split("-").reverse().join(".")
+                  : veh.year}
+              </Text>
+            )}
+            {veh?.engine_capacity && (
+              <Text style={styles.infoMuted}>
+                Capacitate: {veh.engine_capacity} cmc
+              </Text>
+            )}
+            {veh?.engine_power_kw && (
+              <Text style={styles.infoMuted}>Putere: {veh.engine_power_kw} KW</Text>
+            )}
           </View>
         </View>
 
