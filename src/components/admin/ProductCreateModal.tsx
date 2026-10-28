@@ -70,6 +70,18 @@ export default function ProductCreateModal({
   const [newEquiv, setNewEquiv] = useState("");
   const [uom, setUom] = useState("buc");
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith("image/"));
+      if (!f) return;
+      e.preventDefault();
+      setImageFile(f);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, []);
 
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
@@ -377,17 +389,42 @@ export default function ProductCreateModal({
 
             <div className="space-y-1">
               <label className={labelCls}>UM</label>
-              <input value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase} />
+              <select value={uom} onChange={(e) => setUom(e.target.value)} className={inputBase}>
+                {Array.from(new Set(["buc", "m", "kg", "l", uom])).map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+              </select>
             </div>
 
             <div className="space-y-1">
               <label className={labelCls}>Imagine</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-xs text-slate-800 file:mr-3 file:rounded-full file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
-              />
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
+                  if (f) setImageFile(f);
+                }}
+                className={
+                  "rounded-lg border border-dashed p-3 " +
+                  (dragOver ? "border-[#feab1f] bg-amber-50" : "border-slate-300")
+                }
+              >
+                <div className="mb-2 text-[11px] text-slate-600">
+                  Alege un fișier, trage-l aici sau lipește (Ctrl/Cmd+V) o imagine.
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-xs text-slate-800 file:mr-3 file:rounded-full file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                />
+              </div>
               {imageFile && (
                 <img
                   src={URL.createObjectURL(imageFile)}

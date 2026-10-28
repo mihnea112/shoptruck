@@ -311,6 +311,24 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
+  const [dragOver, setDragOver] = useState(false);
+
+  // paste an image (clipboard) while the product modal is open
+  useEffect(() => {
+    if (!editId || !isAdmin) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? []).filter((f) =>
+        f.type.startsWith("image/"),
+      );
+      if (files.length === 0 || imgBusy) return;
+      e.preventDefault();
+      uploadProductFiles(editId, files);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, isAdmin, imgBusy]);
+
   async function uploadProductFiles(
     productId: string,
     files: FileList | File[],
@@ -1295,7 +1313,32 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 p-3">
+                  <div
+                    className={
+                      "rounded-xl border p-3 transition " +
+                      (dragOver
+                        ? "border-[#feab1f] bg-amber-50"
+                        : "border-slate-200")
+                    }
+                    onDragOver={(e) => {
+                      if (!isAdmin || !editId) return;
+                      e.preventDefault();
+                      setDragOver(true);
+                    }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      if (!isAdmin || !editId || imgBusy) return;
+                      const files = Array.from(e.dataTransfer.files).filter(
+                        (f) => f.type.startsWith("image/"),
+                      );
+                      if (files.length) uploadProductFiles(editId, files);
+                    }}
+                  >
+                    <div className="mb-2 text-[11px] text-slate-600">
+                      Alege fișiere, trage-le aici sau lipește (Ctrl/Cmd+V) o imagine.
+                    </div>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <input
                         type="file"
@@ -1534,11 +1577,15 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
                   <label className="text-xs font-semibold text-slate-600">
                     UM (uom)
                   </label>
-                  <input
+                  <select
                     value={uom}
                     onChange={(e) => setUom(e.target.value)}
                     className={inputBase}
-                  />
+                  >
+                    {Array.from(new Set(["buc", "m", "kg", "l", uom])).map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {error ? (
