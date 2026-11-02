@@ -325,9 +325,12 @@ export default function NewOfferPage() {
       console.log("[offer][create] missing accountId; customer=", customer);
       return alert("Selectează un client!");
     }
-    if (!vehicle.make) return alert("Completează marca vehiculului!");
-    if (!vehicle.model) return alert("Completează modelul vehiculului!");
-    if (!vehicle.chassis_vin) return alert("Completează VIN (șasiu)!");
+    if (!vehicle.make || !vehicle.model || !vehicle.chassis_vin) {
+      const ok = confirm(
+        "Datele vehiculului nu sunt complete (marcă, model, VIN). Poți continua fără ele, de exemplu pentru un revânzător.\n\nSalvezi oferta oricum?",
+      );
+      if (!ok) return;
+    }
 
     // Verificăm dacă toate liniile au produse selectate din DB
     const invalidItem = items.find((i) => !i.productId || !i.name);

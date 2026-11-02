@@ -167,7 +167,12 @@ export async function GET(
     FROM product p
     JOIN tax_rate tr ON tr.id = p.tax_rate_id
     LEFT JOIN brand b ON b.id = p.brand_id
-    LEFT JOIN product_image pi ON pi.product_id = p.id AND pi.is_primary = true
+    LEFT JOIN LATERAL (
+      SELECT storage_path FROM product_image
+      WHERE product_id = p.id
+      ORDER BY is_primary DESC, sort_order ASC NULLS LAST, created_at ASC
+      LIMIT 1
+    ) pi ON true
     WHERE p.is_active = true
       AND p.slug != $1
       AND (
@@ -200,7 +205,12 @@ export async function GET(
     FROM product p
     JOIN tax_rate tr ON tr.id = p.tax_rate_id
     LEFT JOIN brand b ON b.id = p.brand_id
-    LEFT JOIN product_image pi ON pi.product_id = p.id AND pi.is_primary = true
+    LEFT JOIN LATERAL (
+      SELECT storage_path FROM product_image
+      WHERE product_id = p.id
+      ORDER BY is_primary DESC, sort_order ASC NULLS LAST, created_at ASC
+      LIMIT 1
+    ) pi ON true
     WHERE p.is_active = true
       AND p.slug != $1
       AND p.id IN (

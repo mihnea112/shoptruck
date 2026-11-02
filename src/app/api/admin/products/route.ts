@@ -142,6 +142,15 @@ export async function GET(req: Request) {
       offset,
     });
 
+    const [{ total }] = (await sql`
+      SELECT COUNT(*)::int AS total
+      FROM product p
+      WHERE
+        (${q} = '' OR p.name ILIKE '%' || ${q} || '%' OR p.sku ILIKE '%' || ${q} || '%' OR p.slug ILIKE '%' || ${q} || '%')
+        AND (${categoryId}::uuid IS NULL OR p.category_id = ${categoryId}::uuid)
+        AND (${brandId}::uuid IS NULL OR p.brand_id = ${brandId}::uuid)
+    `) as any;
+
     const rows = await sql`
       SELECT
         p.id,
@@ -203,7 +212,7 @@ export async function GET(req: Request) {
       count: Array.isArray(rows) ? rows.length : null,
     });
 
-    return json({ ok: true, items: rows, limit, offset });
+    return json({ ok: true, items: rows, total, limit, offset });
   } catch (e: any) {
     debugLog("api/admin/products GET failed", {
       url: req.url,

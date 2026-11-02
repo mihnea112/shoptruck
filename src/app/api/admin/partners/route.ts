@@ -92,7 +92,7 @@ export async function GET(req: Request) {
       const accRows = (await sql`
         SELECT a.id, a.kind, a.display_name, a.legal_name, a.email, a.phone, a.tax_id, a.reg_no, a.is_vat_payer
         FROM account a
-        WHERE NOT EXISTS (SELECT 1 FROM partner p WHERE p.account_id = a.id)
+        WHERE NOT EXISTS (SELECT 1 FROM partner p WHERE p.account_id = a.id OR p.account_id = a.user_id)
           AND (${q.length < 2}
             OR a.display_name ILIKE ${term}
             OR a.legal_name ILIKE ${term}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // --- TYPES ---
 
@@ -68,7 +68,7 @@ type ProductImage = {
   created_at: string;
 };
 
-type ApiList<T> = { ok: true; items: T[]; limit?: number; offset?: number };
+type ApiList<T> = { ok: true; items: T[]; total?: number; limit?: number; offset?: number };
 type ApiOne<T> = { ok: true; item: T };
 
 // --- HELPERS ---
@@ -178,6 +178,9 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
   }, [isAdmin, visibleIds, selectedIds]);
 
   const [q, setQ] = useState("");
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [categoryId, setCategoryId] = useState<string>("");
   const [brandFilterId, setBrandFilterId] = useState<string>("");
 
@@ -281,12 +284,13 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     try {
       const url =
         `/api/admin/products?q=${encodeURIComponent(q)}` +
-        `&limit=200&offset=0` +
+        `&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}` +
         (categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : "") +
         (brandFilterId ? `&brandId=${encodeURIComponent(brandFilterId)}` : "");
 
       const data = await apiJson<ApiList<Product>>(url);
       setItems(data.items || []);
+      setTotal(data.total ?? (data.items || []).length);
     } catch (e: any) {
       setError(e?.message || "Eroare la încărcare.");
     } finally {
@@ -444,6 +448,16 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const pageMounted = useRef(false);
+  useEffect(() => {
+    if (!pageMounted.current) {
+      pageMounted.current = true;
+      return;
+    }
+    loadProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   // keep selection only for visible products (after filtering/reload)
   useEffect(() => {
@@ -771,7 +785,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           </select>
 
           <button
-            onClick={loadProducts}
+            onClick={() => (page === 0 ? loadProducts() : setPage(0))}
             className="rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
           >
             Filtrează
@@ -811,7 +825,7 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
       <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="text-sm font-semibold text-slate-900">
-            Listă produse {loading ? "— se încarcă…" : `(${items.length})`}
+            Listă produse {loading ? "— se încarcă…" : `(${total})`}
           </div>
 
           {isAdmin && selectedIds.length > 0 ? (
@@ -1095,6 +1109,27 @@ export default function ProductsAdmin({ isAdmin }: { isAdmin: boolean }) {
           </tbody>
         </table>
         </div>
+        {total > PAGE_SIZE ? (
+          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-900">
+            <button
+              disabled={page === 0 || loading}
+              onClick={() => setPage((p) => p - 1)}
+              className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40"
+            >
+              ← Anterior
+            </button>
+            <span>
+              Pagina {page + 1} din {Math.ceil(total / PAGE_SIZE)}
+            </span>
+            <button
+              disabled={(page + 1) * PAGE_SIZE >= total || loading}
+              onClick={() => setPage((p) => p + 1)}
+              className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40"
+            >
+              Următor →
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {modalOpen ? (

@@ -232,7 +232,11 @@ export default function CatalogClient() {
   const [showAllBrands, setShowAllBrands] = useState(false);
 
   // Filters
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() =>
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("q") || ""
+      : "",
+  );
   const [categoryId, setCategoryId] = useState(() =>
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("categoryId") || ""
@@ -352,53 +356,8 @@ export default function CatalogClient() {
       {/* Page header */}
       <div className="border-b border-slate-200 bg-white">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          {/* Search bar — full width, top */}
-          <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
-              <svg
-                className="h-4 w-4 text-slate-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z"
-                />
-              </svg>
-            </div>
-            <input
-              value={q}
-              onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Cauta dupa nume, SKU, cod piesa, marca..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20 transition"
-            />
-            {q && (
-              <button
-                onClick={() => handleSearch("")}
-                className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            )}
-          </div>
-
           {/* Bottom row: title + count + sort */}
-          <div className="mt-3 flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-baseline gap-2 min-w-0">
               <h1 className="text-base font-bold text-slate-900 whitespace-nowrap">
                 Catalog Piese

@@ -21,6 +21,19 @@ export function MainHeader() {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    setSearch(new URLSearchParams(window.location.search).get("q") || "");
+  }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = search.trim();
+    window.location.href = term
+      ? `/catalog?q=${encodeURIComponent(term)}`
+      : "/catalog";
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -89,6 +102,17 @@ export function MainHeader() {
             </Link>
           ))}
         </nav>
+
+        {/* Search */}
+        <form onSubmit={handleSearch} className="min-w-0 flex-1 max-w-md">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Caută după nume, SKU, cod piesă, marcă..."
+            className="w-full rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 placeholder:text-slate-600 outline-none focus:border-amber-400 focus:bg-white"
+          />
+        </form>
 
         {/* Actions */}
         <div className="flex items-center gap-3">
