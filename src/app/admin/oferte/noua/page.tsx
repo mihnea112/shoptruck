@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import VehiclePlateReader from "@/components/admin/VehiclePlateReader";
+import NameplatesPanel from "@/components/admin/NameplatesPanel";
 import CustomerSearch, { CustomerDTO } from "@/components/admin/CustomerSearch";
 import ProductAutocomplete, {
   ProductDTO,
@@ -127,6 +129,10 @@ type OfferItemUI = {
   /** base/catalog unit net price used for +/-50% validation */
   basePrice?: number;
   tax: number;
+  /** true when the catalog product has stock available */
+  inStock?: boolean;
+  /** delivery time for out-of-stock items, e.g. "4-5 zile" */
+  deliveryTime?: string;
 };
 
 export default function NewOfferPage() {
@@ -147,7 +153,7 @@ export default function NewOfferPage() {
     model: "",
     series: "",
     engine_code: "",
-    year: new Date().getFullYear(),
+    year: "" as number | "",
     build_date: "",
     engine_capacity: "",
     engine_power_kw: "",
@@ -306,6 +312,8 @@ export default function NewOfferPage() {
               price: p,
               basePrice: p,
               tax: Number(product.vat_percent),
+              inStock: Number(product.stock_available ?? 0) > 0,
+              deliveryTime: "",
             }
           : i,
       ),
@@ -363,6 +371,7 @@ export default function NewOfferPage() {
             ...i,
             // For B2B (non-individual), we exclude TVA at document level.
             tax: vatEnabled ? i.tax : 0,
+            delivery_time: i.inStock ? "" : (i.deliveryTime ?? ""),
           })),
           notes,
           validUntil,
@@ -439,6 +448,11 @@ export default function NewOfferPage() {
                 Niciun client selectat
               </div>
             )}
+            {(customer as any)?.id && (
+              <div className="mt-4">
+                <NameplatesPanel accountId={(customer as any).id} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -460,6 +474,25 @@ export default function NewOfferPage() {
               </div>
             )}
           </div>
+          <VehiclePlateReader
+            accountId={(customer as any)?.id}
+            onResult={(d) =>
+              setVehicle((v) => ({
+                ...v,
+                chassis_vin: d.chassis_vin ?? v.chassis_vin,
+                make: d.make ?? v.make,
+                model: d.model ?? v.model,
+                series: d.series ?? v.series,
+                engine_code: d.engine_code ?? v.engine_code,
+                year: d.year ?? v.year,
+                engine_capacity:
+                  d.engine_capacity != null ? String(d.engine_capacity) : v.engine_capacity,
+                engine_power_kw:
+                  d.engine_power_kw != null ? String(d.engine_power_kw) : v.engine_power_kw,
+                plate_no: d.plate_no ?? v.plate_no,
+              }))
+            }
+          />
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="mb-1 block text-xs font-semibold text-slate-500">
@@ -622,6 +655,7 @@ export default function NewOfferPage() {
               <th className={`${tableHeader} w-24 text-center`}>Cant.</th>
               <th className={`${tableHeader} w-32 text-right`}>Preț (RON)</th>
               <th className={`${tableHeader} w-24 text-center`}>TVA %</th>
+              <th className={`${tableHeader} w-40 text-center`}>Disponibilitate</th>
               <th className={`${tableHeader} w-32 text-right`}>Total</th>
               <th className={`${tableHeader} w-10`}></th>
             </tr>
@@ -718,6 +752,31 @@ export default function NewOfferPage() {
                   />
                 </td>
 
+                <td className="px-4 py-2 border-t border-slate-200 text-center">
+                  {!item.productId ? (
+                    <span className="text-xs text-slate-600">—</span>
+                  ) : item.inStock ? (
+                    <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                      Stoc
+                    </span>
+                  ) : (
+                    <input
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-center text-sm text-slate-950 placeholder:text-slate-500 outline-none focus:border-[#feab1f] focus:ring-2 focus:ring-[#feab1f]/25"
+                      placeholder="ex. 4-5 zile"
+                      value={item.deliveryTime ?? ""}
+                      onChange={(e) =>
+                        setItems((prev) =>
+                          prev.map((i) =>
+                            i.id === item.id
+                              ? { ...i, deliveryTime: e.target.value }
+                              : i,
+                          ),
+                        )
+                      }
+                    />
+                  )}
+                </td>
+
                 <td className="px-4 py-2 text-right font-semibold text-slate-900 border-t border-slate-200">
                   {Math.ceil(
                     item.qty *
@@ -738,7 +797,7 @@ export default function NewOfferPage() {
               </tr>
             ))}
             <tr>
-              <td colSpan={6} className="px-4 py-3 border-t border-slate-200">
+              <td colSpan={7} className="px-4 py-3 border-t border-slate-200">
                 <button
                   onClick={addItem}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"

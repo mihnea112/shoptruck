@@ -135,7 +135,8 @@ const styles = StyleSheet.create({
 
   // Columns
   colImg: { width: "8%", alignItems: "center", justifyContent: "center" },
-  colDesc: { width: "30%", paddingRight: 4 },
+  colDesc: { width: "20%", paddingRight: 4 },
+  colAvail: { width: "10%", textAlign: "center" },
   colQty: { width: "7%", textAlign: "center" },
   colPrice: { width: "12%", textAlign: "right" },
   colNet: { width: "13%", textAlign: "right" },
@@ -398,6 +399,7 @@ export default function OfferPDFDocument({ offer }: { offer: any }) {
               <Text style={styles.tableHeaderText}>Produs</Text>
             </View>
             <Text style={[styles.tableHeaderText, styles.colQty]}>Cant.</Text>
+            <Text style={[styles.tableHeaderText, styles.colAvail]}>Livrare</Text>
             <Text style={[styles.tableHeaderText, styles.colPrice]}>
               Pret unit
             </Text>
@@ -436,6 +438,9 @@ export default function OfferPDFDocument({ offer }: { offer: any }) {
 
               <Text style={[{ fontSize: 9, color: "#1e293b" }, styles.colQty]}>
                 {item.qty}
+              </Text>
+              <Text style={[{ fontSize: 8, color: "#1e293b" }, styles.colAvail]}>
+                {item.in_stock ? "Stoc" : item.delivery_time || "-"}
               </Text>
               <Text
                 style={[{ fontSize: 9, color: "#1e293b" }, styles.colPrice]}

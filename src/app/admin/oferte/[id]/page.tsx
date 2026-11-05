@@ -2,6 +2,8 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import VehiclePlateReader from "@/components/admin/VehiclePlateReader";
+import NameplatesPanel from "@/components/admin/NameplatesPanel";
 import CustomerSearch, { CustomerDTO } from "@/components/admin/CustomerSearch";
 import ProductAutocomplete, {
   ProductDTO,
@@ -92,6 +94,10 @@ type OfferItemUI = {
   offerItemId: string | null;
 
   productId?: string;
+  /** true when the catalog product has stock available */
+  inStock?: boolean;
+  /** delivery time for out-of-stock items, e.g. "4-5 zile" */
+  deliveryTime?: string;
   name: string;
   qty: number;
 
@@ -118,7 +124,7 @@ type VehicleState = {
   model: string;
   series: string;
   engine_code: string;
-  year: number;
+  year: number | "";
   build_date: string;
   engine_capacity: string | number;
   engine_power_kw: string | number;
@@ -144,7 +150,7 @@ export default function EditOfferPage({
     model: "",
     series: "",
     engine_code: "",
-    year: new Date().getFullYear(),
+    year: "",
     build_date: "",
     engine_capacity: "",
     engine_power_kw: "",
@@ -182,7 +188,7 @@ export default function EditOfferPage({
             model: d.vehicle.model || "",
             series: d.vehicle.series || "",
             engine_code: d.vehicle.engine_code || "",
-            year: d.vehicle.year || new Date().getFullYear(),
+            year: d.vehicle.year || "",
             build_date: d.vehicle.build_date || "",
             engine_capacity: d.vehicle.engine_capacity ?? "",
             engine_power_kw: d.vehicle.engine_power_kw ?? "",
@@ -200,6 +206,8 @@ export default function EditOfferPage({
               uiId: Date.now() + idx,
               offerItemId: it.offerItemId || it.id || null,
               productId: it.productId || it.product_id || undefined,
+              inStock: !!it.in_stock,
+              deliveryTime: it.delivery_time || "",
               name: it.name || "",
               qty: Number(it.qty ?? it.quantity ?? 1),
               price: Number(it.price ?? it.unit_price_net ?? 0),
@@ -315,6 +323,8 @@ export default function EditOfferPage({
                 : "0.00",
               priceError: null,
               tax: Number(product.vat_percent),
+              inStock: Number(product.stock_available ?? 0) > 0,
+              deliveryTime: "",
             }
           : i,
       ),
@@ -418,6 +428,7 @@ export default function EditOfferPage({
         name: i.name,
         qty: Number(i.qty) || 1,
         price: Number(i.price) || 0,
+        delivery_time: i.inStock ? "" : (i.deliveryTime ?? ""),
         tax: includeVat ? Number(i.tax) || 0 : 0,
       }));
 
@@ -511,6 +522,11 @@ export default function EditOfferPage({
               </div>
             </div>
           )}
+          {customer?.id && (
+            <div className="mt-4">
+              <NameplatesPanel accountId={customer.id} />
+            </div>
+          )}
         </div>
 
         {/* CARD VEHICUL - ACUM EDITABIL */}
@@ -521,6 +537,23 @@ export default function EditOfferPage({
             </div>
             <h2 className="text-sm font-semibold text-slate-900">Vehicul</h2>
           </div>
+          <VehiclePlateReader
+            accountId={customer?.id}
+            onResult={(d) =>
+              setVehicle((v) => ({
+                ...v,
+                chassis_vin: d.chassis_vin ?? v.chassis_vin,
+                make: d.make ?? v.make,
+                model: d.model ?? v.model,
+                series: d.series ?? v.series,
+                engine_code: d.engine_code ?? v.engine_code,
+                year: d.year ?? v.year,
+                engine_capacity: d.engine_capacity ?? v.engine_capacity,
+                engine_power_kw: d.engine_power_kw ?? v.engine_power_kw,
+                plate_no: d.plate_no ?? v.plate_no,
+              }))
+            }
+          />
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <input
@@ -660,6 +693,7 @@ export default function EditOfferPage({
               <th className={`${tableHeader} w-24 text-center`}>Cant.</th>
               <th className={`${tableHeader} w-32 text-right`}>Preț</th>
               <th className={`${tableHeader} w-24 text-center`}>TVA %</th>
+              <th className={`${tableHeader} w-40 text-center`}>Disponibilitate</th>
               <th className={`${tableHeader} w-32 text-right`}>
                 {includeVat ? "Total Brut" : "Total"}
               </th>
@@ -763,6 +797,30 @@ export default function EditOfferPage({
                   <td className="px-4 py-2 border-t border-slate-200 text-center text-slate-500">
                     {includeVat ? rowTax : 0}%
                   </td>
+                  <td className="px-4 py-2 border-t border-slate-200 text-center">
+                    {!item.productId ? (
+                      <span className="text-xs text-slate-600">—</span>
+                    ) : item.inStock ? (
+                      <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                        Stoc
+                      </span>
+                    ) : (
+                      <input
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-center text-sm text-slate-950 placeholder:text-slate-500 outline-none focus:border-[#feab1f]"
+                        placeholder="ex. 4-5 zile"
+                        value={item.deliveryTime ?? ""}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((i) =>
+                              i.uiId === item.uiId
+                                ? { ...i, deliveryTime: e.target.value }
+                                : i,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-right font-semibold border-t border-slate-200">
                     {rowTotal.toFixed(2)}
                   </td>
@@ -778,7 +836,7 @@ export default function EditOfferPage({
               );
             })}
             <tr>
-              <td colSpan={6} className="px-4 py-3 border-t border-slate-200">
+              <td colSpan={7} className="px-4 py-3 border-t border-slate-200">
                 <button
                   onClick={addItem}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"

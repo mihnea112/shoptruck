@@ -85,6 +85,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         oi.line_net,
         oi.line_tax,
         oi.line_gross,
+        oi.delivery_time,
+        (COALESCE(p.stock_on_hand,0) - COALESCE(p.stock_reserved,0)) AS stock_available,
         p.sku  AS product_sku,
         pi.storage_path AS primary_image_path
       FROM offer_item oi
@@ -134,7 +136,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             model: offer.model ?? "",
             series: offer.series ?? "",
             engine_code: offer.engine_code ?? "",
-            year: offer.year ?? new Date().getFullYear(),
+            year: offer.year ?? null,
             build_date: offer.build_date ?? (offer.year ? `${offer.year}-01-01` : ""),
             engine_capacity: offer.engine_capacity ?? "",
             engine_power_kw: offer.engine_power_kw ?? "",
@@ -150,7 +152,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             model: "",
             series: "",
             engine_code: "",
-            year: new Date().getFullYear(),
+            year: null,
             vin: "",
             plate_number: "",
             brand: "",
@@ -191,6 +193,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
               productId: i.product_id,
               name: i.name,
               sku: i.product_sku ?? null,
+              in_stock: i.product_id ? Number(i.stock_available ?? 0) > 0 : false,
+              delivery_time: i.delivery_time ?? "",
               qty,
               quantity: qty,
               price: unitNet,
@@ -296,6 +300,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
         qty,
         unitNet,
         taxFrac,
+        deliveryTime: i?.delivery_time ? String(i.delivery_time).trim() || null : null,
         lineNet,
         lineTax,
         lineGross,
@@ -452,7 +457,8 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
             tax_rate,
             line_net,
             line_tax,
-            line_gross
+            line_gross,
+            delivery_time
           )
           VALUES (
             ${id}::uuid,
@@ -463,7 +469,8 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
             ${it.taxFrac},
             ${it.lineNet},
             ${it.lineTax},
-            ${it.lineGross}
+            ${it.lineGross},
+            ${it.deliveryTime}
           )
         `;
       }

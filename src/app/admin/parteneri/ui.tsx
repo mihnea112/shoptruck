@@ -1,5 +1,6 @@
 "use client";
 
+import NameplatesPanel from "@/components/admin/NameplatesPanel";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { DELIVERY_OPTIONS, PAYMENT_OPTIONS } from "@/lib/partner-options";
@@ -591,7 +592,7 @@ function PartnerFormModal({
   discountClasses: DiscountClass[];
   isEdit: boolean; saving: boolean; onSave: () => void; onClose: () => void;
 }) {
-  const [section, setSection] = useState<"general" | "address" | "commercial" | "banks" | "contacts">("general");
+  const [section, setSection] = useState<"general" | "address" | "commercial" | "banks" | "contacts" | "plates">("general");
   const f = (key: string) => form[key] ?? "";
   const set = (key: string, val: any) => setForm({ ...form, [key]: val });
 
@@ -617,6 +618,7 @@ function PartnerFormModal({
     { key: "commercial", label: "Comercial" },
     { key: "banks", label: "Bănci" },
     { key: "contacts", label: "Contacte" },
+    ...(isEdit && form.account_id ? [{ key: "plates", label: "Plăcuțe" } as const] : []),
   ] as const;
 
   return (
@@ -844,6 +846,10 @@ function PartnerFormModal({
           )}
 
           {/* ── CONTACTS ── */}
+          {section === "plates" && form.account_id && (
+            <NameplatesPanel accountId={form.account_id} />
+          )}
+
           {section === "contacts" && (
             <div className="space-y-4">
               {contacts.map((c, i) => (

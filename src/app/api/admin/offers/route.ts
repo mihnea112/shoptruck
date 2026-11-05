@@ -298,6 +298,7 @@ export async function POST(req: NextRequest) {
       qty,
       unitNet,
       taxRate: taxFrac,
+      deliveryTime: i?.delivery_time ? String(i.delivery_time).trim() || null : null,
       lineNet,
       lineTax,
     };
@@ -349,7 +350,8 @@ export async function POST(req: NextRequest) {
           tax_rate,
           line_net,
           line_tax,
-          line_gross
+          line_gross,
+          delivery_time
         )
         VALUES (
           ${offerId}::uuid,
@@ -360,7 +362,8 @@ export async function POST(req: NextRequest) {
           ${it.taxRate},
           ${it.lineNet},
           ${it.lineTax},
-          ${it.lineNet + it.lineTax}
+          ${it.lineNet + it.lineTax},
+          ${it.deliveryTime}
         )
       `;
     }
