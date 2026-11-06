@@ -94,6 +94,7 @@ export default function PartnersUI() {
   const [formContacts, setFormContacts] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [viewPartner, setViewPartner] = useState<Partner | null>(null);
 
   // Discount class form
   const [showDcForm, setShowDcForm] = useState(false);
@@ -367,9 +368,9 @@ export default function PartnersUI() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {partners.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50 transition">
+                    <tr key={p.id} onClick={() => setViewPartner(p)} className="cursor-pointer hover:bg-slate-50 transition">
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{p.display_name}</div>
+                        <div className="font-semibold text-slate-900 hover:text-[#b57712]">{p.display_name}</div>
                       </td>
                       <td className="px-4 py-3">
                         <Badge label={TYPE_LABELS[p.partner_type] || p.partner_type} color={TYPE_COLORS[p.partner_type] || "bg-slate-50 text-slate-600 border-slate-200"} />
@@ -391,7 +392,7 @@ export default function PartnersUI() {
                       <td className="px-4 py-3 text-slate-700">
                         {p.credit_limit > 0 ? `${Number(p.credit_limit).toLocaleString("ro-RO")} lei / ${p.credit_days}z` : "–"}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         {(p as any).from_account ? (
                           <span className="text-xs font-semibold text-slate-600">Cont client</span>
                         ) : (
@@ -466,6 +467,15 @@ export default function PartnersUI() {
         </>
       )}
 
+      {/* ══════════ PARTNER DETAIL MODAL ══════════ */}
+      {viewPartner && (
+        <PartnerDetailModal
+          partner={viewPartner}
+          onClose={() => setViewPartner(null)}
+          onEdit={(id) => { setViewPartner(null); openEdit(id); }}
+        />
+      )}
+
       {/* ══════════ PARTNER FORM MODAL ══════════ */}
       {showForm && (
         <PartnerFormModal
@@ -535,6 +545,157 @@ export default function PartnersUI() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Partner Detail Modal (read-only) ──────────────────── */
+
+function InfoRow({ label, value }: { label: string; value: any }) {
+  const v = value === null || value === undefined || value === "" ? "–" : String(value);
+  return (
+    <div>
+      <div className="text-xs font-semibold text-slate-600">{label}</div>
+      <div className="mt-0.5 text-sm text-slate-900 break-words">{v}</div>
+    </div>
+  );
+}
+
+function PartnerDetailModal({ partner, onClose, onEdit }: {
+  partner: Partner; onClose: () => void; onEdit: (id: string) => void;
+}) {
+  const fromAccount = !!(partner as any).from_account;
+  const [d, setD] = useState<any>(fromAccount ? { ...partner, account_id: partner.id } : null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fromAccount) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/partners/${partner.id}`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Eroare.");
+        setD(data.item);
+      } catch (e: any) {
+        setErr(e?.message || "Eroare la încărcare.");
+      }
+    })();
+  }, [partner.id, fromAccount]);
+
+  const address = d
+    ? [d.street_type, d.street_name, d.street_number && `Nr. ${d.street_number}`,
+       d.block && `Bl. ${d.block}`, d.staircase && `Sc. ${d.staircase}`,
+       d.floor && `Et. ${d.floor}`, d.apartment && `Ap. ${d.apartment}`]
+        .filter(Boolean).join(" ")
+    : "";
+  const banks: any[] = d?.banks || [];
+  const contacts: any[] = d?.contacts || [];
+
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <section className="rounded-xl border border-slate-200 p-4">
+      <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">{title}</h3>
+      {children}
+    </section>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-8" onClick={onClose}>
+      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-bold text-slate-900">{partner.display_name}</h2>
+            <div className="mt-1">
+              <Badge label={TYPE_LABELS[partner.partner_type] || partner.partner_type} color={TYPE_COLORS[partner.partner_type] || "bg-slate-50 text-slate-600 border-slate-200"} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {!fromAccount && (
+              <button onClick={() => onEdit(partner.id)} className="rounded-xl bg-[#feab1f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e09a1a] transition">
+                Editează
+              </button>
+            )}
+            <button onClick={onClose} className="text-slate-600 hover:text-slate-900 text-xl leading-none">&times;</button>
+          </div>
+        </div>
+
+        <div className="max-h-[75vh] space-y-4 overflow-y-auto px-6 py-5">
+          {err && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
+          {!d && !err && <div className="py-10 text-center text-sm text-slate-600">Se încarcă...</div>}
+          {d && (
+            <>
+              <Section title="General">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                  <InfoRow label="Denumire legală" value={d.legal_name} />
+                  <InfoRow label="CUI" value={d.tax_id} />
+                  <InfoRow label="Reg. comerțului" value={d.reg_no} />
+                  <InfoRow label="Email" value={d.email} />
+                  <InfoRow label="Telefon" value={d.phone} />
+                  <InfoRow label="Website" value={d.website} />
+                  <InfoRow label="Plătitor TVA" value={d.is_vat_payer ? "Da" : "Nu"} />
+                  <InfoRow label="Agent" value={d.agent_name} />
+                </div>
+              </Section>
+
+              {!fromAccount && (
+                <>
+                  <Section title="Adresă">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      <InfoRow label="Țara" value={d.country} />
+                      <InfoRow label="Județ" value={d.county} />
+                      <InfoRow label="Localitate" value={d.city} />
+                      <InfoRow label="Cod poștal" value={d.postal_code} />
+                      <InfoRow label="Adresă" value={address || d.address_details} />
+                    </div>
+                  </Section>
+
+                  <Section title="Comercial">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      <InfoRow label="Clasă discount" value={d.discount_class_name ? `${d.discount_class_name} (${d.discount_pct}%)` : null} />
+                      <InfoRow label="Credit maxim" value={Number(d.credit_limit) > 0 ? `${Number(d.credit_limit).toLocaleString("ro-RO")} lei` : null} />
+                      <InfoRow label="Zile credit" value={d.credit_days} />
+                      <InfoRow label="Mod plată" value={d.payment_method} />
+                      <InfoRow label="Mod livrare" value={d.delivery_method} />
+                    </div>
+                  </Section>
+
+                  <Section title={`Bănci (${banks.length})`}>
+                    {banks.length === 0 ? <div className="text-sm text-slate-600">–</div> : (
+                      <div className="space-y-2">
+                        {banks.map((b, i) => (
+                          <div key={i} className="text-sm text-slate-900">
+                            <span className="font-semibold">{b.bank_name}</span> · {b.iban} · {b.currency}
+                            {b.is_default && <span className="ml-2 text-xs font-semibold text-emerald-700">implicit</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Section>
+
+                  <Section title={`Contacte (${contacts.length})`}>
+                    {contacts.length === 0 ? <div className="text-sm text-slate-600">–</div> : (
+                      <div className="space-y-2">
+                        {contacts.map((c, i) => (
+                          <div key={i} className="text-sm text-slate-900">
+                            <span className="font-semibold">{[c.last_name, c.first_name].filter(Boolean).join(" ")}</span>
+                            {c.role && ` · ${c.role}`}{c.phone && ` · ${c.phone}`}{c.email && ` · ${c.email}`}
+                            {c.is_primary && <span className="ml-2 text-xs font-semibold text-emerald-700">principal</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Section>
+                </>
+              )}
+
+              {d.account_id && (
+                <Section title="Plăcuțe de identificare">
+                  <NameplatesPanel accountId={d.account_id} />
+                </Section>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
