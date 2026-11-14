@@ -765,7 +765,7 @@ function PartnerFormModal({
         const data = await res.json();
         if (!data.ok) return;
         const names = (data.items || [])
-          .filter((u: any) => u.is_active && (u.roles || []).some((r: string) => ["SALES", "SALES_REP"].includes(String(r).toUpperCase())))
+          .filter((u: any) => u.is_active && (u.roles || []).some((r: string) => ["ADMIN", "SALES", "SALES_REP"].includes(String(r).toUpperCase())))
           .map((u: any) => u.full_name || u.email)
           .filter(Boolean);
         setAgentOptions(Array.from(new Set<string>(names)));

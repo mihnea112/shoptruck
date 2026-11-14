@@ -69,15 +69,19 @@ export default function ProductCreateModal({
   const [equivCodes, setEquivCodes] = useState<string[]>([]);
   const [newEquiv, setNewEquiv] = useState("");
   const [uom, setUom] = useState("buc");
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const addImages = (list: File[]) => {
+    const imgs = list.filter((x) => x.type.startsWith("image/"));
+    if (imgs.length) setImageFiles((prev) => [...prev, ...imgs]);
+  };
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith("image/"));
-      if (!f) return;
+      const fs = Array.from(e.clipboardData?.files ?? []).filter((x) => x.type.startsWith("image/"));
+      if (!fs.length) return;
       e.preventDefault();
-      setImageFile(f);
+      addImages(fs);
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
@@ -178,9 +182,11 @@ export default function ProductCreateModal({
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Eroare la salvare.");
 
       let imagePath: string | null = null;
-      if (imageFile) {
+      const failures: string[] = [];
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
         try {
-          const ext = (imageFile.name.split(".").pop() || "jpg").toLowerCase();
+          const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
           const up = await fetch(`/api/admin/products/${data.id}/images/upload-url`, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -189,20 +195,27 @@ export default function ProductCreateModal({
           if (!up?.ok) throw new Error(up?.error || "Upload eșuat.");
           const put = await fetch(up.signedUrl, {
             method: "PUT",
-            headers: { "content-type": imageFile.type || "application/octet-stream" },
-            body: imageFile,
+            headers: { "content-type": file.type || "application/octet-stream" },
+            body: file,
           });
-          if (!put.ok) throw new Error(`Upload eșuat (${put.status}).`);
+          if (!put.ok) {
+            const t = await put.text().catch(() => "");
+            throw new Error(`Upload eșuat (${put.status}). ${t}`.trim());
+          }
+          const isPrimary = imagePath === null;
           const reg = await fetch(`/api/admin/products/${data.id}/images`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ storage_path: up.path, alt: null, sort_order: 0, is_primary: true }),
+            body: JSON.stringify({ storage_path: up.path, alt: null, sort_order: i, is_primary: isPrimary }),
           }).then((r) => r.json());
           if (!reg?.ok) throw new Error(reg?.error || "Imaginea nu a putut fi salvată.");
-          imagePath = up.path;
+          if (isPrimary) imagePath = up.path;
         } catch (err: any) {
-          alert(`Produsul a fost creat, dar imaginea nu s-a încărcat: ${err?.message || err}`);
+          failures.push(`${file.name}: ${err?.message || err}`);
         }
+      }
+      if (failures.length) {
+        alert(`Produsul a fost creat, dar unele imagini nu s-au încărcat:\n${failures.join("\n")}`);
       }
 
       onCreated({
@@ -397,7 +410,7 @@ export default function ProductCreateModal({
             </div>
 
             <div className="space-y-1">
-              <label className={labelCls}>Imagine</label>
+              <label className={labelCls}>Imagini</label>
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -407,8 +420,7 @@ export default function ProductCreateModal({
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(false);
-                  const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
-                  if (f) setImageFile(f);
+                  addImages(Array.from(e.dataTransfer.files));
                 }}
                 className={
                   "rounded-lg border border-dashed p-3 " +
@@ -416,21 +428,39 @@ export default function ProductCreateModal({
                 }
               >
                 <div className="mb-2 text-[11px] text-slate-600">
-                  Alege un fișier, trage-l aici sau lipește (Ctrl/Cmd+V) o imagine.
+                  Alege fișiere, trage-le aici sau lipește (Ctrl/Cmd+V) imagini. Prima este imaginea principală.
                 </div>
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                  multiple
+                  onChange={(e) => {
+                    addImages(Array.from(e.target.files ?? []));
+                    e.target.value = "";
+                  }}
                   className="block w-full text-xs text-slate-800 file:mr-3 file:rounded-full file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
                 />
               </div>
-              {imageFile && (
-                <img
-                  src={URL.createObjectURL(imageFile)}
-                  alt="Previzualizare"
-                  className="mt-2 h-28 rounded-lg border border-slate-200 object-contain"
-                />
+              {imageFiles.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {imageFiles.map((f, i) => (
+                    <div key={i} className="relative">
+                      <img
+                        src={URL.createObjectURL(f)}
+                        alt="Previzualizare"
+                        className="h-24 w-24 rounded-lg border border-slate-200 object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setImageFiles((prev) => prev.filter((_, j) => j !== i))}
+                        className="absolute -right-2 -top-2 h-5 w-5 rounded-full bg-slate-900 text-xs font-bold leading-5 text-white"
+                        aria-label="Elimină imaginea"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
