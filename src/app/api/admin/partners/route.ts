@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const q = (searchParams.get("q") || "").trim();
     const type = searchParams.get("type"); // CLIENT, SUPPLIER, BOTH
     const limitRaw = Number(searchParams.get("limit") || 50);
-    const limit = Math.min(Math.max(limitRaw, 1), 200);
+    const limit = Math.min(Math.max(limitRaw, 1), 1000);
     const offset = Number(searchParams.get("offset") || 0);
 
     let rows;

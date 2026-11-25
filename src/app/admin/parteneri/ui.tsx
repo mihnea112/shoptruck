@@ -112,7 +112,7 @@ export default function PartnersUI() {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (typeFilter !== "all") params.set("type", typeFilter);
-      params.set("limit", "100");
+      params.set("limit", "1000");
 
       const res = await fetch(`/api/admin/partners?${params}`);
       const data = await res.json();
@@ -687,9 +687,9 @@ function PartnerDetailModal({ partner, onClose, onEdit }: {
                 </>
               )}
 
-              {d.account_id && (
+              {(d.account_id || !fromAccount) && (
                 <Section title="Plăcuțe de identificare">
-                  <NameplatesPanel accountId={d.account_id} />
+                  <NameplatesPanel accountId={d.account_id} partnerId={fromAccount ? undefined : partner.id} />
                 </Section>
               )}
             </>
@@ -779,7 +779,7 @@ function PartnerFormModal({
     { key: "commercial", label: "Comercial" },
     { key: "banks", label: "Bănci" },
     { key: "contacts", label: "Contacte" },
-    ...(isEdit && form.account_id ? [{ key: "plates", label: "Plăcuțe" } as const] : []),
+    ...(isEdit && form.id ? [{ key: "plates", label: "Plăcuțe" } as const] : []),
   ] as const;
 
   return (
@@ -1007,8 +1007,8 @@ function PartnerFormModal({
           )}
 
           {/* ── CONTACTS ── */}
-          {section === "plates" && form.account_id && (
-            <NameplatesPanel accountId={form.account_id} />
+          {section === "plates" && form.id && (
+            <NameplatesPanel accountId={form.account_id} partnerId={form.id} />
           )}
 
           {section === "contacts" && (
