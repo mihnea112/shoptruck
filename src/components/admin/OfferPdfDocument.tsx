@@ -282,7 +282,10 @@ export default function OfferPDFDocument({ offer }: { offer: any }) {
     return { ...item, qty, price, taxPct, lineNet, lineTVA, lineTotal };
   });
 
-  const totalGeneral = totalNet + totalTVA;
+  // Same rule as the saved offer: round the total up to a whole leu,
+  // the difference goes into VAT so net + VAT = total.
+  const totalGeneral = Math.ceil(totalNet + totalTVA - 1e-9);
+  totalTVA = totalGeneral - totalNet;
 
   const veh = offer.vehicle;
   const vehicleLabel = veh
